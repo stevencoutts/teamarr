@@ -1782,45 +1782,45 @@ function FillersTab({ formData, setFormData, isTeamTemplate, fieldRefs, setLastF
   const idleOffseason = formData.idle_offseason || { title_enabled: false, title: null, subtitle_enabled: false, subtitle: null, description_enabled: false, description: null }
 
   const updatePregame = (field: keyof FillerContent, value: string | null) => {
-    setFormData((prev) => ({
-      ...prev,
-      pregame_fallback: { ...pregame, [field]: value },
-    }))
+    setFormData((prev) => {
+      const current = prev.pregame_fallback || DEFAULT_PREGAME
+      return { ...prev, pregame_fallback: { ...current, [field]: value } }
+    })
   }
 
   const updatePostgame = (field: keyof FillerContent, value: string | null) => {
-    setFormData((prev) => ({
-      ...prev,
-      postgame_fallback: { ...postgame, [field]: value },
-    }))
+    setFormData((prev) => {
+      const current = prev.postgame_fallback || DEFAULT_POSTGAME
+      return { ...prev, postgame_fallback: { ...current, [field]: value } }
+    })
   }
 
   const updatePostgameCond = (field: keyof ConditionalSettings, value: boolean | string | null) => {
-    setFormData((prev) => ({
-      ...prev,
-      postgame_conditional: { ...postgameCond, [field]: value },
-    }))
+    setFormData((prev) => {
+      const current = prev.postgame_conditional || { enabled: false, title_final: null, title_not_final: null, subtitle_final: null, subtitle_not_final: null, description_final: null, description_not_final: null }
+      return { ...prev, postgame_conditional: { ...current, [field]: value } }
+    })
   }
 
   const updateIdle = (field: keyof FillerContent, value: string | null) => {
-    setFormData((prev) => ({
-      ...prev,
-      idle_content: { ...idle, [field]: value },
-    }))
+    setFormData((prev) => {
+      const current = prev.idle_content || DEFAULT_IDLE
+      return { ...prev, idle_content: { ...current, [field]: value } }
+    })
   }
 
   const updateIdleCond = (field: keyof ConditionalSettings, value: boolean | string | null) => {
-    setFormData((prev) => ({
-      ...prev,
-      idle_conditional: { ...idleCond, [field]: value },
-    }))
+    setFormData((prev) => {
+      const current = prev.idle_conditional || { enabled: false, title_final: null, title_not_final: null, subtitle_final: null, subtitle_not_final: null, description_final: null, description_not_final: null }
+      return { ...prev, idle_conditional: { ...current, [field]: value } }
+    })
   }
 
   const updateIdleOffseason = (field: keyof IdleOffseasonSettings, value: boolean | string | null) => {
-    setFormData((prev) => ({
-      ...prev,
-      idle_offseason: { ...idleOffseason, [field]: value },
-    }))
+    setFormData((prev) => {
+      const current = prev.idle_offseason || { title_enabled: false, title: null, subtitle_enabled: false, subtitle: null, description_enabled: false, description: null }
+      return { ...prev, idle_offseason: { ...current, [field]: value } }
+    })
   }
 
   return (
@@ -2266,19 +2266,21 @@ function XmltvTab({ formData, setFormData }: TabProps) {
   }, [customCategories.join(",")])
 
   const updateFlags = (field: keyof XmltvFlags, value: boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      xmltv_flags: { ...flags, [field]: value },
-    }))
+    setFormData((prev) => {
+      const current = prev.xmltv_flags || { new: true, live: false, date: false }
+      return { ...prev, xmltv_flags: { ...current, [field]: value } }
+    })
   }
 
   const toggleCategory = (cat: string, checked: boolean) => {
-    const current = formData.xmltv_categories || []
-    if (checked) {
-      setFormData((prev) => ({ ...prev, xmltv_categories: [...current, cat] }))
-    } else {
-      setFormData((prev) => ({ ...prev, xmltv_categories: current.filter((c) => c !== cat) }))
-    }
+    setFormData((prev) => {
+      const current = prev.xmltv_categories || []
+      if (checked) {
+        return { ...prev, xmltv_categories: [...current, cat] }
+      } else {
+        return { ...prev, xmltv_categories: current.filter((c) => c !== cat) }
+      }
+    })
   }
 
   const updateCustomCategories = (value: string) => {
