@@ -48,15 +48,31 @@ def extract_soccer_primary_league_id(ctx: TemplateContext, game_ctx: GameContext
 def extract_soccer_match_league(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
     if not game_ctx or not game_ctx.event:
         return ""
-    # Check for source league metadata on event
-    # This is populated when aggregating across multiple leagues
-    event = game_ctx.event
-    # If event has league name, use it
-    if event.league:
-        # Try to get a friendly name from the league code
-        # For now, return the league code - can enhance later
-        return event.league.upper().replace(".", " ")
-    return ""
+    if not game_ctx.event.league:
+        return ""
+    from teamarr.services.league_mappings import get_league_mapping_service
+
+    service = get_league_mapping_service()
+    return service.get_league_alias(game_ctx.event.league)
+
+
+@register_variable(
+    name="soccer_match_league_name",
+    category=Category.SOCCER,
+    suffix_rules=SuffixRules.ALL,
+    description="Full league display name for THIS game (e.g., 'English Premier League')",
+)
+def extract_soccer_match_league_name(
+    ctx: TemplateContext, game_ctx: GameContext | None
+) -> str:
+    if not game_ctx or not game_ctx.event:
+        return ""
+    if not game_ctx.event.league:
+        return ""
+    from teamarr.services.league_mappings import get_league_mapping_service
+
+    service = get_league_mapping_service()
+    return service.get_league_display_name(game_ctx.event.league)
 
 
 @register_variable(
@@ -78,6 +94,11 @@ def extract_soccer_match_league_id(ctx: TemplateContext, game_ctx: GameContext |
     description="Logo URL for THIS game's league",
 )
 def extract_soccer_match_league_logo(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
-    # This would need to be added to Event or fetched separately
-    # For now, return empty - can be populated by context builder
-    return ""
+    if not game_ctx or not game_ctx.event:
+        return ""
+    if not game_ctx.event.league:
+        return ""
+    from teamarr.services.league_mappings import get_league_mapping_service
+
+    service = get_league_mapping_service()
+    return service.get_league_logo(game_ctx.event.league)

@@ -31,6 +31,7 @@ class LeagueMappingService:
     - get_league_alias(league_code) - for {league}: league_alias or display_name
     - get_league_id(league_code) - for {league_id}: league_id or league_code
     - get_league_display_name(league_code) - for {league_name}: display_name
+    - get_league_logo(league_code) - for {soccer_match_league_logo}: logo_url
     """
 
     def __init__(
@@ -52,8 +53,11 @@ class LeagueMappingService:
         self._gracenote_categories: dict[str, str] = {}
         # Sport per league (for gracenote_category fallback)
         self._league_sports: dict[str, str] = {}
+        # {soccer_match_league_logo}: logo_url from leagues table
+        self._league_logos: dict[str, str] = {}
         # Fallback from league_cache for discovered leagues
         self._league_cache_names: dict[str, str] = {}
+        self._league_cache_logos: dict[str, str] = {}
         # {sport}: sport display name (e.g., 'mma' -> 'MMA')
         self._sport_display_names: dict[str, str] = {}
         self._load_all_mappings()
@@ -122,22 +126,28 @@ class LeagueMappingService:
                 if row["gracenote_category"]:
                     self._gracenote_categories[league_code_lower] = row["gracenote_category"]
 
+                # Cache logo_url for {soccer_match_league_logo}
+                if row["logo_url"]:
+                    self._league_logos[league_code_lower] = row["logo_url"]
+
                 # Cache sport for gracenote_category fallback
                 if row["sport"]:
                     self._league_sports[league_code_lower] = row["sport"]
 
-            # Also load league names from league_cache for fallback
+            # Also load league names and logos from league_cache for fallback
             cursor = conn.execute(
                 """
-                SELECT league_slug, league_name
+                SELECT league_slug, league_name, logo_url
                 FROM league_cache
-                WHERE league_name IS NOT NULL
+                WHERE league_name IS NOT NULL OR logo_url IS NOT NULL
                 """
             )
             for row in cursor.fetchall():
                 slug = row["league_slug"].lower()
-                if slug not in self._league_cache_names:
+                if row["league_name"] and slug not in self._league_cache_names:
                     self._league_cache_names[slug] = row["league_name"]
+                if row["logo_url"] and slug not in self._league_cache_logos:
+                    self._league_cache_logos[slug] = row["logo_url"]
 
             # Load sport display names from sports table
             self._sport_display_names = get_sport_display_names_from_db(conn)
@@ -160,9 +170,11 @@ class LeagueMappingService:
         self._league_aliases.clear()
         self._league_ids.clear()
         self._league_display_names.clear()
+        self._league_logos.clear()
         self._gracenote_categories.clear()
         self._league_sports.clear()
         self._league_cache_names.clear()
+        self._league_cache_logos.clear()
         self._sport_display_names.clear()
         self._load_all_mappings()
 
@@ -239,6 +251,32 @@ class LeagueMappingService:
 
         # Final fallback to league_code uppercase
         return league_code.upper()
+
+    def get_league_logo(self, league_code: str) -> str:
+        """Get logo URL for a league.
+
+        Fallback chain:
+            1. logo_url from leagues table
+            2. logo_url from league_cache table
+            3. Empty string
+
+        Thread-safe: uses in-memory cache, no DB access.
+
+        Args:
+            league_code: Raw league code (e.g., 'eng.1', 'nfl')
+
+        Returns:
+            Logo URL or empty string if none available.
+        """
+        key = league_code.lower()
+
+        if key in self._league_logos:
+            return self._league_logos[key]
+
+        if key in self._league_cache_logos:
+            return self._league_cache_logos[key]
+
+        return ""
 
     def get_gracenote_category(self, league_code: str) -> str:
         """Get Gracenote-compatible category for {gracenote_category} variable.
