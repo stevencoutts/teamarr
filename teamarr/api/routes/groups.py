@@ -82,10 +82,12 @@ class GroupCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=100)
     display_name: str | None = Field(None, max_length=100)  # Optional display name override
-    leagues: list[str] = Field(..., min_length=1)
-    soccer_mode: str | None = None  # 'all', 'teams', 'manual', or None (non-soccer)
-    soccer_followed_teams: list[SoccerFollowedTeam] | None = None  # Teams to follow
-    group_mode: str = "single"  # "single" or "multi" - persisted to preserve user intent
+    # Deprecated: leagues/soccer/mode/parent now managed via sports subscription
+    # Accepted for backward compat but ignored
+    leagues: list[str] = Field(default_factory=list)
+    soccer_mode: str | None = None
+    soccer_followed_teams: list[SoccerFollowedTeam] | None = None
+    group_mode: str = "multi"
     parent_group_id: int | None = None
     template_id: int | None = None
     channel_start_number: int | None = Field(None, ge=1)
@@ -229,13 +231,14 @@ class GroupResponse(BaseModel):
     id: int
     name: str
     display_name: str | None = None  # Optional display name override for UI
-    leagues: list[str]
-    soccer_mode: str | None = None  # 'all', 'teams', 'manual', or None (non-soccer)
-    soccer_followed_teams: list[SoccerFollowedTeam] | None = None  # Teams to follow
-    group_mode: str = "single"  # "single" or "multi" - persisted to preserve user intent
+    # Deprecated: managed via subscription. Kept for backward compat.
+    leagues: list[str] = Field(default_factory=list)
+    soccer_mode: str | None = None
+    soccer_followed_teams: list[SoccerFollowedTeam] | None = None
+    group_mode: str = "multi"
     parent_group_id: int | None = None
     template_id: int | None = None
-    group_template_count: int = 0  # Count of templates via Manage Templates
+    group_template_count: int = 0
     channel_start_number: int | None = None
     channel_group_id: int | None = None
     channel_group_mode: str = "static"  # "static", "sport", "league"
@@ -357,12 +360,13 @@ class BulkTemplateAssignmentCreate(BaseModel):
 class BulkGroupSettings(BaseModel):
     """Shared settings for bulk group creation."""
 
-    group_mode: str = "single"  # "single" or "multi"
-    leagues: list[str] = Field(..., min_length=1)
-    soccer_mode: str | None = None  # 'all', 'teams', 'manual', or None (non-soccer)
-    soccer_followed_teams: list[SoccerFollowedTeam] | None = None  # Teams to follow
-    template_id: int | None = None  # Legacy: default template
-    template_assignments: list[BulkTemplateAssignmentCreate] | None = None  # New: managed templates
+    # Deprecated: accepted for backward compat but ignored
+    group_mode: str = "multi"
+    leagues: list[str] = Field(default_factory=list)
+    soccer_mode: str | None = None
+    soccer_followed_teams: list[SoccerFollowedTeam] | None = None
+    template_id: int | None = None
+    template_assignments: list[BulkTemplateAssignmentCreate] | None = None
     channel_group_id: int | None = None
     channel_group_mode: str = "static"  # "static", "sport", "league"
     channel_profile_ids: list[str | int] | None = None  # IDs or "{sport}", "{league}"
@@ -1075,78 +1079,12 @@ class BulkTemplatesResponse(BaseModel):
     message: str
 
 
-@router.put("/bulk-templates", response_model=BulkTemplatesResponse)
-def bulk_set_group_templates(request: BulkTemplatesRequest):
-    """Replace template assignments for multiple groups.
-
-    This replaces ALL existing template assignments for each group
-    with the new set of assignments. Useful for applying the same
-    template configuration to multiple groups at once.
-    """
-    from teamarr.database.groups import (
-        add_group_template as db_add_template,
-    )
-    from teamarr.database.groups import (
-        delete_group_templates as db_delete_templates,
-    )
-    from teamarr.database.groups import (
-        get_existing_group_ids,
-    )
-    from teamarr.database.templates import get_existing_template_ids
-
-    if not request.group_ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No group IDs provided",
-        )
-
-    if not request.assignments:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No template assignments provided",
-        )
-
-    with get_db() as conn:
-        # Verify all groups exist
-        found_ids = get_existing_group_ids(conn, request.group_ids)
-        missing = set(request.group_ids) - found_ids
-        if missing:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Groups not found: {sorted(missing)}",
-            )
-
-        # Verify all templates exist
-        template_ids = list({a.template_id for a in request.assignments})
-        found_template_ids = get_existing_template_ids(conn, template_ids)
-        missing_templates = set(template_ids) - found_template_ids
-        if missing_templates:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Templates not found: {sorted(missing_templates)}",
-            )
-
-        # For each group: delete existing assignments, add new ones
-        for group_id in request.group_ids:
-            db_delete_templates(conn, group_id)
-
-            for assignment in request.assignments:
-                db_add_template(
-                    conn,
-                    group_id,
-                    assignment.template_id,
-                    assignment.sports,
-                    assignment.leagues,
-                )
-
-    return BulkTemplatesResponse(
-        success=True,
-        groups_updated=len(request.group_ids),
-        assignments_per_group=len(request.assignments),
-        message=(
-            f"Applied {len(request.assignments)} template assignment(s) "
-            f"to {len(request.group_ids)} group(s)"
-        ),
+@router.put("/bulk-templates", deprecated=True)
+def bulk_set_group_templates():
+    """Deprecated: Use /api/v1/subscription-templates instead."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Deprecated: use /api/v1/subscription-templates instead",
     )
 
 
@@ -1551,46 +1489,6 @@ def disable_group(group_id: int) -> dict:
         set_group_enabled(conn, group_id, False)
 
     return {"success": True, "message": f"Group '{group.name}' disabled"}
-
-
-@router.post("/{group_id}/promote")
-def promote_group_to_parent(group_id: int) -> dict:
-    """Promote a child group to become the parent, swapping the hierarchy.
-
-    This operation:
-    1. Makes the old parent a child of the promoted group
-    2. Makes all siblings children of the promoted group
-    3. Copies settings from old parent to promoted group if needed
-
-    Example:
-        Before: A (parent) -> B, C, D (children)
-        POST /groups/D/promote
-        After: D (parent) -> A, B, C (children)
-
-    Returns:
-        Success message with details of reassigned groups
-    """
-    from teamarr.database.groups import promote_to_parent
-
-    try:
-        with get_db() as conn:
-            result = promote_to_parent(conn, group_id)
-
-        return {
-            "success": True,
-            "promoted_group_id": result["promoted_group_id"],
-            "promoted_group_name": result["promoted_group_name"],
-            "old_parent_id": result["old_parent_id"],
-            "old_parent_name": result["old_parent_name"],
-            "reassigned_groups": result["reassigned_groups"],
-            "message": f"'{result['promoted_group_name']}' is now the parent of "
-            f"'{result['old_parent_name']}' and {result['reassigned_count'] - 1} other group(s)",
-        }
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from None
 
 
 @router.post("/{group_id}/cache/clear", response_model=ClearCacheResponse)
@@ -2090,161 +1988,37 @@ class GroupTemplateResponse(BaseModel):
     template_name: str | None = None
 
 
-@router.get("/{group_id}/templates", response_model=list[GroupTemplateResponse])
+@router.get("/{group_id}/templates", deprecated=True)
 def get_group_templates(group_id: int):
-    """Get all template assignments for a group.
-
-    Returns templates ordered by specificity (leagues first, then sports, then default).
-    """
-    from teamarr.database.groups import get_group
-    from teamarr.database.groups import get_group_templates as db_get_templates
-
-    with get_db() as conn:
-        # Verify group exists
-        if not get_group(conn, group_id):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Group {group_id} not found",
-            )
-
-        templates = db_get_templates(conn, group_id)
-
-    return [
-        GroupTemplateResponse(
-            id=t.id,
-            group_id=t.group_id,
-            template_id=t.template_id,
-            sports=t.sports,
-            leagues=t.leagues,
-            template_name=t.template_name,
-        )
-        for t in templates
-    ]
-
-
-@router.post(
-    "/{group_id}/templates",
-    response_model=GroupTemplateResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def add_group_template(group_id: int, request: GroupTemplateCreate):
-    """Add a template assignment to a group.
-
-    Templates are resolved by specificity:
-    1. leagues match (most specific)
-    2. sports match
-    3. default (both NULL)
-    """
-    from teamarr.database.groups import add_group_template as db_add_template
-    from teamarr.database.groups import get_group
-    from teamarr.database.templates import get_template
-
-    with get_db() as conn:
-        # Verify group exists
-        if not get_group(conn, group_id):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Group {group_id} not found",
-            )
-
-        # Verify template exists
-        template = get_template(conn, request.template_id)
-        if not template:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Template {request.template_id} not found",
-            )
-        template_name = template.name
-
-        assignment_id = db_add_template(
-            conn,
-            group_id,
-            request.template_id,
-            request.sports,
-            request.leagues,
-        )
-
-    return GroupTemplateResponse(
-        id=assignment_id,
-        group_id=group_id,
-        template_id=request.template_id,
-        sports=request.sports,
-        leagues=request.leagues,
-        template_name=template_name,
+    """Deprecated: Use GET /api/v1/subscription-templates instead."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Deprecated: use GET /api/v1/subscription-templates instead",
     )
 
 
-@router.put("/{group_id}/templates/{assignment_id}", response_model=GroupTemplateResponse)
-def update_group_template(group_id: int, assignment_id: int, request: GroupTemplateUpdate):
-    """Update a template assignment."""
-    from teamarr.database.groups import (
-        get_group_template_by_id,
-    )
-    from teamarr.database.groups import (
-        update_group_template as db_update_template,
-    )
-    from teamarr.database.templates import get_template
-
-    with get_db() as conn:
-        # Verify assignment exists and belongs to this group
-        existing = get_group_template_by_id(conn, assignment_id, group_id=group_id)
-        if not existing:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Template assignment {assignment_id} not found in group {group_id}",
-            )
-
-        # Build update kwargs
-        kwargs = {}
-        if request.template_id is not None:
-            # Verify new template exists
-            if not get_template(conn, request.template_id):
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Template {request.template_id} not found",
-                )
-            kwargs["template_id"] = request.template_id
-
-        # Use ... sentinel to distinguish "not provided" from "set to null"
-        if "sports" in request.model_fields_set:
-            kwargs["sports"] = request.sports
-        if "leagues" in request.model_fields_set:
-            kwargs["leagues"] = request.leagues
-
-        if kwargs:
-            db_update_template(conn, assignment_id, **kwargs)
-
-        # Fetch updated record
-        updated = get_group_template_by_id(conn, assignment_id)
-
-    return GroupTemplateResponse(
-        id=updated.id,
-        group_id=updated.group_id,
-        template_id=updated.template_id,
-        sports=updated.sports,
-        leagues=updated.leagues,
-        template_name=updated.template_name,
+@router.post("/{group_id}/templates", deprecated=True)
+def add_group_template(group_id: int):
+    """Deprecated: Use POST /api/v1/subscription-templates instead."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Deprecated: use POST /api/v1/subscription-templates instead",
     )
 
 
-@router.delete("/{group_id}/templates/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.put("/{group_id}/templates/{assignment_id}", deprecated=True)
+def update_group_template(group_id: int, assignment_id: int):
+    """Deprecated: Use PUT /api/v1/subscription-templates/{id} instead."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Deprecated: use PUT /api/v1/subscription-templates/{id} instead",
+    )
+
+
+@router.delete("/{group_id}/templates/{assignment_id}", deprecated=True)
 def delete_group_template(group_id: int, assignment_id: int):
-    """Delete a template assignment."""
-    from teamarr.database.groups import (
-        delete_group_template as db_delete_template,
+    """Deprecated: Use DELETE /api/v1/subscription-templates/{id} instead."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Deprecated: use DELETE /api/v1/subscription-templates/{id} instead",
     )
-    from teamarr.database.groups import (
-        get_group_template_by_id,
-    )
-
-    with get_db() as conn:
-        # Verify assignment exists and belongs to this group
-        if not get_group_template_by_id(conn, assignment_id, group_id=group_id):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Template assignment {assignment_id} not found in group {group_id}",
-            )
-
-        db_delete_template(conn, assignment_id)
-
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
