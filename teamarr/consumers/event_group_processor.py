@@ -46,8 +46,6 @@ from teamarr.database.groups import (
     get_all_groups,
     get_enabled_soccer_leagues,
     get_group,
-    get_group_templates,
-    get_template_for_event,
     update_group_stats,
 )
 from teamarr.database.stats import (
@@ -57,6 +55,10 @@ from teamarr.database.stats import (
     save_failed_matches,
     save_matched_streams,
     save_run,
+)
+from teamarr.database.subscription import (
+    get_subscription_template_for_event,
+    get_subscription_templates,
 )
 from teamarr.services import SportsDataService, create_default_service
 from teamarr.services.stream_filter import FilterResult
@@ -818,9 +820,9 @@ class EventGroupProcessor:
         """
         result = ProcessingResult(group_id=group.id, group_name=group.name)
 
-        # Template is required - check both direct assignment and group_templates table
-        group_templates = get_group_templates(conn, group.id)
-        has_template = group.template_id is not None or len(group_templates) > 0
+        # Template is required — check subscription templates
+        sub_templates = get_subscription_templates(conn)
+        has_template = len(sub_templates) > 0
 
         if not has_template:
             logger.warning(
@@ -2057,13 +2059,9 @@ class EventGroupProcessor:
         }
 
         # Load template from database if configured
-        # Check both direct template_id and group_templates table
+        # Resolve template from global subscription
         template_config = None
-        template_id = group.template_id
-        if not template_id:
-            # Try to get default template from group_templates (sports/leagues both NULL)
-            # Using empty strings to trigger fallback to default template
-            template_id = get_template_for_event(conn, group.id, "", "")
+        template_id = get_subscription_template_for_event(conn, "", "")
         if template_id:
             template_config = self._load_event_template(conn, template_id)
 
@@ -2166,11 +2164,10 @@ class EventGroupProcessor:
         filler_config: EventFillerConfig | None = None
         template_db = None
 
-        # Get default template (fallback when no sport/league-specific template matches)
-        default_template_id = group.template_id
-        if not default_template_id:
-            # Try to get default template from group_templates (sports/leagues both NULL)
-            default_template_id = get_template_for_event(conn, group.id, "", "")
+        # Get default template from subscription (fallback for all events)
+        default_template_id = get_subscription_template_for_event(
+            conn, "", ""
+        )
 
         if default_template_id:
             template_config = self._load_event_template(conn, default_template_id)
@@ -2194,17 +2191,17 @@ class EventGroupProcessor:
 
         exception_keywords = get_exception_keywords(conn)
 
-        # Log template resolution context for multi-template groups
-        from teamarr.database.groups import get_group_templates
-
-        group_templates = get_group_templates(conn, group.id)
-        if len(group_templates) > 1:
+        # Log template resolution context
+        sub_templates = get_subscription_templates(conn)
+        if len(sub_templates) > 1:
             logger.info(
-                "[EVENT_EPG] Multi-template group %d (%s): default=%s, templates=%s",
-                group.id,
-                group.name,
+                "[EVENT_EPG] Multi-template subscription: default=%s, "
+                "templates=%s",
                 default_template_id,
-                [(t.template_id, t.sports, t.leagues) for t in group_templates],
+                [
+                    (t.template_id, t.sports, t.leagues)
+                    for t in sub_templates
+                ],
             )
 
         for match in matched_streams:
@@ -2216,15 +2213,15 @@ class EventGroupProcessor:
             event_league = getattr(event, "league", "") or ""
 
             # Resolve the best template for this specific event
-            event_template_id = get_template_for_event(
-                conn, group.id, event_sport, event_league
+            event_template_id = get_subscription_template_for_event(
+                conn, event_sport, event_league
             )
 
-            # Log template resolution for multi-template groups
-            if len(group_templates) > 1:
+            # Log template resolution for multi-template subscriptions
+            if len(sub_templates) > 1:
                 logger.info(
-                    "[EVENT_EPG] Template resolution: event=%s sport=%r league=%r "
-                    "-> template=%s (default=%s)",
+                    "[EVENT_EPG] Template resolution: event=%s "
+                    "sport=%r league=%r -> template=%s (default=%s)",
                     event.id,
                     event_sport,
                     event_league,

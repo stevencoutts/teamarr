@@ -396,14 +396,18 @@ class ChannelLifecycleService:
         Returns:
             Template config (dict or EventTemplateConfig) or None
         """
-        from teamarr.database.groups import get_template_for_event
+        from teamarr.database.subscription import (
+            get_subscription_template_for_event,
+        )
         from teamarr.database.templates import get_template, template_to_event_config
 
         event_sport = getattr(event, "sport", None) or ""
         event_league = getattr(event, "league", None) or ""
 
-        # Try to find a sport/league-specific template
-        template_id = get_template_for_event(conn, group_id, event_sport, event_league)
+        # Resolve template from global subscription
+        template_id = get_subscription_template_for_event(
+            conn, event_sport, event_league
+        )
 
         if template_id:
             template = get_template(conn, template_id)
