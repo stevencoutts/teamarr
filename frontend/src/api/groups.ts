@@ -52,22 +52,6 @@ export async function disableGroup(
   return api.post(`/groups/${groupId}/disable`)
 }
 
-export interface PromoteGroupResponse {
-  success: boolean
-  promoted_group_id: number
-  promoted_group_name: string
-  old_parent_id: number
-  old_parent_name: string
-  reassigned_groups: number[]
-  message: string
-}
-
-export async function promoteGroup(
-  groupId: number
-): Promise<PromoteGroupResponse> {
-  return api.post(`/groups/${groupId}/promote`)
-}
-
 export async function previewGroup(
   groupId: number
 ): Promise<PreviewGroupResponse> {
@@ -127,80 +111,3 @@ export async function clearGroupsMatchCache(
   return api.post("/groups/cache/clear", { group_ids: groupIds })
 }
 
-// =============================================================================
-// Group Templates - Multi-template assignment per group
-// =============================================================================
-
-export interface GroupTemplate {
-  id: number
-  group_id: number
-  template_id: number
-  sports: string[] | null
-  leagues: string[] | null
-  template_name: string | null
-}
-
-export interface GroupTemplateCreate {
-  template_id: number
-  sports?: string[]
-  leagues?: string[]
-}
-
-export interface GroupTemplateUpdate {
-  template_id?: number
-  sports?: string[]
-  leagues?: string[]
-}
-
-export async function getGroupTemplates(
-  groupId: number
-): Promise<GroupTemplate[]> {
-  return api.get(`/groups/${groupId}/templates`)
-}
-
-export async function addGroupTemplate(
-  groupId: number,
-  data: GroupTemplateCreate
-): Promise<GroupTemplate> {
-  return api.post(`/groups/${groupId}/templates`, data)
-}
-
-export async function updateGroupTemplate(
-  groupId: number,
-  assignmentId: number,
-  data: GroupTemplateUpdate
-): Promise<GroupTemplate> {
-  return api.put(`/groups/${groupId}/templates/${assignmentId}`, data)
-}
-
-export async function deleteGroupTemplate(
-  groupId: number,
-  assignmentId: number
-): Promise<void> {
-  return api.delete(`/groups/${groupId}/templates/${assignmentId}`)
-}
-
-// Bulk template assignment for multiple groups
-export interface BulkTemplateAssignment {
-  template_id: number
-  sports?: string[] | null
-  leagues?: string[] | null
-}
-
-export interface BulkTemplatesRequest {
-  group_ids: number[]
-  assignments: BulkTemplateAssignment[]
-}
-
-export interface BulkTemplatesResponse {
-  success: boolean
-  groups_updated: number
-  assignments_per_group: number
-  message: string
-}
-
-export async function bulkSetGroupTemplates(
-  data: BulkTemplatesRequest
-): Promise<BulkTemplatesResponse> {
-  return api.put("/groups/bulk-templates", data)
-}
