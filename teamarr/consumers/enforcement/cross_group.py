@@ -58,10 +58,9 @@ class CrossGroupEnforcer:
     """Enforces cross-group stream consolidation.
 
     Identifies when multiple groups have channels for the same event
-    and consolidates them based on priority:
-    - Single-league groups take priority over multi-league
-    - Parent groups take priority over child groups
-    - Earlier-created channels take priority
+    and consolidates them based on group sort_order priority:
+    - Lower sort_order wins (user-configurable)
+    - Earlier-created channels break ties
 
     The lower-priority channel's streams are moved to the higher-priority
     channel, and the lower-priority channel is deleted.
@@ -82,14 +81,15 @@ class CrossGroupEnforcer:
         self._channel_manager = channel_manager
         self._dispatcharr_lock = threading.Lock()
 
-    def enforce(self, multi_league_group_ids: list[int] | None = None) -> CrossGroupResult:
+    def enforce(self, group_ids: list[int] | None = None) -> CrossGroupResult:
         """Run cross-group consolidation.
 
         Finds duplicate channels across groups and consolidates them.
+        Priority is determined by group sort_order (lower wins).
 
         Args:
-            multi_league_group_ids: Optional list of multi-league group IDs
-                to check. If None, checks all groups with multiple leagues.
+            group_ids: Optional list of group IDs to check.
+                If None, checks all enabled groups.
 
         Returns:
             CrossGroupResult with consolidation details
@@ -110,46 +110,38 @@ class CrossGroupEnforcer:
 
         try:
             with self._db_factory() as conn:
-                # Get all groups
                 all_groups = get_all_groups(conn, include_disabled=False)
 
-                # Identify single-league vs multi-league groups
-                # Multi-league = has multiple leagues in leagues array
-                single_league_ids = set()
-                multi_league_groups: dict[int, Any] = {}  # id -> group object
+                # Build sort_order lookup for priority (lower = higher priority)
+                group_sort_order = {
+                    g.id: g.sort_order for g in all_groups
+                }
+                group_map = {g.id: g for g in all_groups}
 
-                for group in all_groups:
-                    if len(group.leagues) > 1:
-                        multi_league_groups[group.id] = group
-                    else:
-                        single_league_ids.add(group.id)
-
-                # Filter to specified groups if provided
-                if multi_league_group_ids is not None:
-                    multi_league_groups = {
+                # Determine which groups to check
+                check_groups = group_map
+                if group_ids is not None:
+                    check_groups = {
                         gid: g
-                        for gid, g in multi_league_groups.items()
-                        if gid in set(multi_league_group_ids)
+                        for gid, g in group_map.items()
+                        if gid in set(group_ids)
                     }
 
-                if not multi_league_groups:
-                    logger.debug("[CROSS_GROUP] No multi-league groups to check")
+                if not check_groups:
+                    logger.debug("[CROSS_GROUP] No groups to check")
                     return result
 
-                # For each multi-league group's channels
-                for group_id, group in multi_league_groups.items():
-                    # Check overlap_handling mode
-                    overlap_handling = getattr(group, "overlap_handling", "add_stream")
+                for group_id, group in check_groups.items():
+                    overlap_handling = getattr(
+                        group, "overlap_handling", "add_stream"
+                    )
 
-                    # create_all mode: keep separate channels, no consolidation
                     if overlap_handling == "create_all":
-                        logger.debug(
-                            "[CROSS_GROUP] Group '%s' has overlap_handling=create_all, skipping",
-                            group.group_name,
-                        )
                         continue
 
-                    channels = get_managed_channels_for_group(conn, group_id, include_deleted=False)
+                    channels = get_managed_channels_for_group(
+                        conn, group_id, include_deleted=False
+                    )
 
                     for channel in channels:
                         event_id = channel.event_id
@@ -158,7 +150,6 @@ class CrossGroupEnforcer:
                         if not event_id:
                             continue
 
-                        # Check if a single-league group has this event
                         target_channel = find_any_channel_for_event(
                             conn=conn,
                             event_id=event_id,
@@ -169,31 +160,39 @@ class CrossGroupEnforcer:
                         if not target_channel:
                             continue
 
-                        # Only consolidate if target is from single-league group
-                        if target_channel.event_epg_group_id not in single_league_ids:
+                        # Use sort_order for priority (lower wins)
+                        target_order = group_sort_order.get(
+                            target_channel.event_epg_group_id, 999
+                        )
+                        our_order = group_sort_order.get(group_id, 999)
+
+                        if our_order <= target_order:
+                            # We have higher or equal priority, skip
                             result.channels_skipped.append(
                                 {
                                     "channel": channel.channel_name,
-                                    "reason": "Target is not single-league",
+                                    "reason": "Higher priority (lower sort_order)",
                                 }
                             )
                             continue
 
-                        # Handle based on overlap_handling mode
-                        streams = get_channel_streams(conn, channel.id, include_removed=False)
+                        streams = get_channel_streams(
+                            conn, channel.id, include_removed=False
+                        )
                         moved_count = 0
 
-                        # For add_stream/add_only: move streams before deleting
-                        # For skip: just delete (don't move streams)
                         if overlap_handling in ("add_stream", "add_only"):
                             for stream in streams:
                                 if stream_exists_on_channel(
-                                    conn, target_channel.id, stream.dispatcharr_stream_id
+                                    conn,
+                                    target_channel.id,
+                                    stream.dispatcharr_stream_id,
                                 ):
-                                    continue  # Already on target
+                                    continue
 
-                                # Use sequential priority - final ordering after all matching
-                                priority = get_next_stream_priority(conn, target_channel.id)
+                                priority = get_next_stream_priority(
+                                    conn, target_channel.id
+                                )
                                 add_stream_to_channel(
                                     conn=conn,
                                     managed_channel_id=target_channel.id,
@@ -215,7 +214,6 @@ class CrossGroupEnforcer:
                                     }
                                 )
 
-                            # Sync to Dispatcharr
                             if self._channel_manager and moved_count > 0:
                                 self._sync_streams_to_dispatcharr(
                                     from_channel_id=channel.dispatcharr_channel_id,
@@ -223,15 +221,23 @@ class CrossGroupEnforcer:
                                     streams=streams,
                                 )
 
-                        # Delete the multi-league channel (for add_stream, add_only, and skip)
-                        if self._channel_manager and channel.dispatcharr_channel_id:
-                            self._delete_channel_in_dispatcharr(channel.dispatcharr_channel_id)
+                        if (
+                            self._channel_manager
+                            and channel.dispatcharr_channel_id
+                        ):
+                            self._delete_channel_in_dispatcharr(
+                                channel.dispatcharr_channel_id
+                            )
 
-                        if overlap_handling == "skip":
-                            action = "Skipped (deleted)"
-                        else:
-                            action = "Consolidated into"
-                        mark_channel_deleted(conn, channel.id, reason="Cross-group consolidation")
+                        action = (
+                            "Skipped (deleted)"
+                            if overlap_handling == "skip"
+                            else "Consolidated into"
+                        )
+                        mark_channel_deleted(
+                            conn, channel.id,
+                            reason="Cross-group consolidation",
+                        )
 
                         log_channel_history(
                             conn=conn,
@@ -247,7 +253,10 @@ class CrossGroupEnforcer:
                                 managed_channel_id=target_channel.id,
                                 change_type="stream_added",
                                 change_source="cross_group_enforcement",
-                                notes=f"Received {moved_count} streams from cross-group",
+                                notes=(
+                                    f"Received {moved_count} streams"
+                                    " from cross-group"
+                                ),
                             )
 
                         result.channels_deleted.append(
@@ -262,7 +271,9 @@ class CrossGroupEnforcer:
 
                         logger.info(
                             "[CROSS_GROUP] %s #%s -> #%s (event=%s mode=%s)",
-                            "Deleted" if overlap_handling == "skip" else "Consolidated",
+                            "Deleted"
+                            if overlap_handling == "skip"
+                            else "Consolidated",
                             channel.channel_number,
                             target_channel.channel_number,
                             event_id,
