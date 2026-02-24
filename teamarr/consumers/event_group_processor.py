@@ -25,7 +25,6 @@ from teamarr.consumers.channel_lifecycle import (
     StreamProcessResult,
     create_lifecycle_service,
 )
-from teamarr.consumers.child_processor import ChildStreamProcessor
 from teamarr.consumers.enforcement import (
     CrossGroupEnforcer,
     KeywordEnforcer,
@@ -578,10 +577,9 @@ class EventGroupProcessor:
     ) -> BatchProcessingResult:
         """Process all active event groups.
 
-        Groups are processed in order:
-        1. Parent groups (single-league, no parent_group_id) - create channels
-        2. Child groups (have parent_group_id) - add streams to parent channels
-        3. Multi-league groups (multiple leagues) - may consolidate with single-league
+        All groups are processed equally in sort_order. No parent/child
+        distinction — every group creates channels and generates XMLTV.
+        Leagues come from the global sports subscription.
 
         After all groups, enforcement runs to fix any misplaced streams.
 
@@ -599,63 +597,66 @@ class EventGroupProcessor:
         self._generation = generation  # Store for use in _do_matching
 
         # Clear caches at start of new generation run
-        # This ensures fresh data and allows cross-group reuse within this run
         self._shared_events.clear()
-        # Clear subscription leagues cache so it's re-resolved for this run
         if hasattr(self, "_subscription_leagues_cache"):
             del self._subscription_leagues_cache
 
         with self._db_factory() as conn:
             groups = get_all_groups(conn, include_disabled=False)
-
-            # Sort groups: parents first, then children, then multi-league
-            parent_groups, child_groups, multi_league_groups = self._sort_groups(groups)
-            total_groups = len(parent_groups) + len(child_groups) + len(multi_league_groups)
+            total_groups = len(groups)
             processed_count = 0
 
-            # Send initial progress to avoid stall at 50%
             if progress_callback:
                 if total_groups > 0:
-                    progress_callback(0, total_groups, f"Found {total_groups} groups to process")
+                    progress_callback(
+                        0, total_groups,
+                        f"Found {total_groups} groups to process",
+                    )
                 else:
                     progress_callback(0, 1, "No event groups configured")
 
             processed_group_ids = []
-            multi_league_ids = [g.id for g in multi_league_groups]
 
-            # Phase 1: Process parent groups (create channels, generate EPG)
-            for group in parent_groups:
-                # Send "Loading..." message before expensive fetch operations
+            for group in groups:
                 if progress_callback:
-                    leagues_count = len(group.leagues) if group.leagues else 0
                     progress_callback(
                         processed_count,
                         total_groups,
-                        f"Loading {group.name}... ({leagues_count} leagues)",
+                        f"Loading {group.name}...",
                     )
 
-                # Create stream progress callback that reports during matching
                 stream_cb = None
                 if progress_callback:
 
                     def make_stream_cb(grp_name: str, grp_idx: int):
-                        def cb(current: int, total: int, stream_name: str, matched: bool):
+                        def cb(
+                            current: int,
+                            total: int,
+                            stream_name: str,
+                            matched: bool,
+                        ):
                             icon = "✓" if matched else "✗"
-                            msg = f"{icon} {current}/{total} — {grp_name}: {stream_name}"
+                            msg = (
+                                f"{icon} {current}/{total}"
+                                f" — {grp_name}: {stream_name}"
+                            )
                             progress_callback(grp_idx, total_groups, msg)
 
                         return cb
 
-                    stream_cb = make_stream_cb(group.name, processed_count + 1)
+                    stream_cb = make_stream_cb(
+                        group.name, processed_count + 1
+                    )
 
-                # Create status callback for post-matching phases
                 status_cb = None
                 if progress_callback:
                     grp_idx = processed_count + 1
 
                     def make_status_cb(grp_name: str, idx: int):
                         def cb(msg: str):
-                            progress_callback(idx, total_groups, f"{grp_name}: {msg}")
+                            progress_callback(
+                                idx, total_groups, f"{grp_name}: {msg}"
+                            )
 
                         return cb
 
@@ -672,113 +673,17 @@ class EventGroupProcessor:
                 processed_group_ids.append(group.id)
                 processed_count += 1
                 if progress_callback:
-                    # Include stream stats in progress: "Group Name (5/8 streams matched)"
-                    stats = f"({result.streams_matched}/{result.streams_fetched} matched)"
-                    progress_callback(processed_count, total_groups, f"{group.name} {stats}")
-
-            # Phase 2: Process child groups (add streams to parent channels)
-            for group in child_groups:
-                # Send "Loading..." message before expensive fetch operations
-                if progress_callback:
+                    stats = (
+                        f"({result.streams_matched}/"
+                        f"{result.streams_fetched} matched)"
+                    )
                     progress_callback(
-                        processed_count, total_groups, f"Loading {group.name}... (child group)"
+                        processed_count, total_groups,
+                        f"{group.name} {stats}",
                     )
 
-                # Child groups use same stream progress pattern
-                stream_cb = None
-                if progress_callback:
-
-                    def make_stream_cb(grp_name: str, grp_idx: int):
-                        def cb(current: int, total: int, stream_name: str, matched: bool):
-                            icon = "✓" if matched else "✗"
-                            msg = f"{icon} {current}/{total} — {grp_name}: {stream_name}"
-                            progress_callback(grp_idx, total_groups, msg)
-
-                        return cb
-
-                    stream_cb = make_stream_cb(group.name, processed_count + 1)
-
-                # Create status callback for prefetch progress
-                status_cb = None
-                if progress_callback:
-                    grp_idx = processed_count + 1
-
-                    def make_status_cb(grp_name: str, idx: int):
-                        def cb(msg: str):
-                            progress_callback(idx, total_groups, f"{grp_name}: {msg}")
-
-                        return cb
-
-                    status_cb = make_status_cb(group.name, grp_idx)
-
-                result = self._process_child_group_internal(
-                    conn,
-                    group,
-                    target_date,
-                    stream_progress_callback=stream_cb,
-                    status_callback=status_cb,
-                )
-                batch_result.results.append(result)
-                # Child groups don't generate their own XMLTV
-                processed_count += 1
-                if progress_callback:
-                    stats = f"({result.streams_matched}/{result.streams_fetched} matched)"
-                    progress_callback(processed_count, total_groups, f"{group.name} {stats}")
-
-            # Phase 3: Process multi-league groups
-            for group in multi_league_groups:
-                # Send "Loading..." message before expensive fetch operations
-                if progress_callback:
-                    leagues_count = len(group.leagues) if group.leagues else 0
-                    progress_callback(
-                        processed_count,
-                        total_groups,
-                        f"Loading {group.name}... ({leagues_count} leagues)",
-                    )
-
-                stream_cb = None
-                if progress_callback:
-
-                    def make_stream_cb(grp_name: str, grp_idx: int):
-                        def cb(current: int, total: int, stream_name: str, matched: bool):
-                            icon = "✓" if matched else "✗"
-                            msg = f"{icon} {current}/{total} — {grp_name}: {stream_name}"
-                            progress_callback(grp_idx, total_groups, msg)
-
-                        return cb
-
-                    stream_cb = make_stream_cb(group.name, processed_count + 1)
-
-                # Create status callback for post-matching phases
-                status_cb = None
-                if progress_callback:
-                    grp_idx = processed_count + 1
-
-                    def make_status_cb(grp_name: str, idx: int):
-                        def cb(msg: str):
-                            progress_callback(idx, total_groups, f"{grp_name}: {msg}")
-
-                        return cb
-
-                    status_cb = make_status_cb(group.name, grp_idx)
-
-                result = self._process_group_internal(
-                    conn,
-                    group,
-                    target_date,
-                    stream_progress_callback=stream_cb,
-                    status_callback=status_cb,
-                )
-                batch_result.results.append(result)
-                processed_group_ids.append(group.id)
-                processed_count += 1
-                if progress_callback:
-                    stats = f"({result.streams_matched}/{result.streams_fetched} matched)"
-                    progress_callback(processed_count, total_groups, f"{group.name} {stats}")
-
-            # Phase 4: Run enforcement (keyword, cross-group, ordering, orphans)
+            # Run enforcement (keyword, cross-group, ordering, orphans)
             if run_enforcement:
-                # Create lifecycle_service for orphan cleanup
                 enforcement_lifecycle = None
                 if self._dispatcharr_client:
                     enforcement_lifecycle = create_lifecycle_service(
@@ -786,13 +691,18 @@ class EventGroupProcessor:
                         sports_service=self._service,
                         dispatcharr_client=self._dispatcharr_client,
                     )
+                all_group_ids = [g.id for g in groups]
                 self._run_enforcement(
-                    conn, multi_league_ids, lifecycle_service=enforcement_lifecycle
+                    conn,
+                    all_group_ids,
+                    lifecycle_service=enforcement_lifecycle,
                 )
 
-            # Aggregate XMLTV from all processed groups (parents + multi-league)
+            # Aggregate XMLTV from all processed groups
             if processed_group_ids:
-                xmltv_contents = get_all_group_xmltv(conn, processed_group_ids)
+                xmltv_contents = get_all_group_xmltv(
+                    conn, processed_group_ids
+                )
                 if xmltv_contents:
                     from teamarr.database.settings import get_display_settings
 
@@ -803,294 +713,12 @@ class EventGroupProcessor:
                         generator_url=display_settings.xmltv_generator_url,
                     )
                     logger.info(
-                        f"Aggregated XMLTV from {len(xmltv_contents)} groups, "
-                        f"{len(batch_result.total_xmltv)} bytes"
+                        f"Aggregated XMLTV from {len(xmltv_contents)} groups"
+                        f", {len(batch_result.total_xmltv)} bytes"
                     )
 
         batch_result.completed_at = datetime.now()
         return batch_result
-
-    def _sort_groups(
-        self, groups: list[EventEPGGroup]
-    ) -> tuple[list[EventEPGGroup], list[EventEPGGroup], list[EventEPGGroup]]:
-        """Sort groups into parent, child, and multi-league categories.
-
-        Processing order:
-        1. Parent groups (single-league, no parent_group_id)
-        2. Child groups (have parent_group_id)
-        3. Multi-league groups (multiple leagues in leagues array)
-
-        Args:
-            groups: List of all groups
-
-        Returns:
-            Tuple of (parent_groups, child_groups, multi_league_groups)
-        """
-        parent_groups = []
-        child_groups = []
-        multi_league_groups = []
-
-        for group in groups:
-            if group.parent_group_id is not None:
-                # Child group - always processed after parents
-                child_groups.append(group)
-            elif len(group.leagues) > 1:
-                # Multi-league group - processed last
-                multi_league_groups.append(group)
-            else:
-                # Single-league parent group - processed first
-                parent_groups.append(group)
-
-        logger.debug(
-            f"Group sort: {len(parent_groups)} parents, "
-            f"{len(child_groups)} children, {len(multi_league_groups)} multi-league"
-        )
-
-        return parent_groups, child_groups, multi_league_groups
-
-    def _process_child_group_internal(
-        self,
-        conn: Connection,
-        group: EventEPGGroup,
-        target_date: date,
-        stream_progress_callback: Callable | None = None,
-        status_callback: Callable[[str], None] | None = None,
-    ) -> ProcessingResult:
-        """Process a child group - adds streams to parent's channels.
-
-        Child groups don't create their own channels or generate XMLTV.
-        They match streams and add them to their parent's existing channels.
-
-        Args:
-            conn: Database connection
-            group: Child group to process
-            target_date: Target date
-            stream_progress_callback: Optional callback(current, total, stream_name, matched)
-            status_callback: Optional callback for status updates
-
-        Returns:
-            ProcessingResult with stream add details
-        """
-        result = ProcessingResult(group_id=group.id, group_name=group.name)
-
-        if not group.parent_group_id:
-            result.errors.append("Group is not a child group (no parent_group_id)")
-            result.completed_at = datetime.now()
-            return result
-
-        # Create stats run
-        stats_run = create_run(conn, run_type="event_group", group_id=group.id)
-
-        try:
-            # Step 1: Fetch M3U streams
-            streams = self._fetch_streams(group)
-            result.streams_fetched = len(streams)
-            stats_run.streams_fetched = len(streams)
-
-            if not streams:
-                result.errors.append("No streams found for child group")
-                result.completed_at = datetime.now()
-                stats_run.complete(status="completed", error="No streams found")
-                save_run(conn, stats_run)
-                return result
-
-            # Step 1.5: Apply stream filtering (include/exclude regex)
-            streams, filter_result = self._filter_streams(streams, group)
-            result.streams_after_filter = filter_result.passed_count
-            result.filtered_stale = filter_result.filtered_stale
-            # Combine all built-in eligibility filters into filtered_not_event
-            # (placeholder, unsupported_sport, and not_event are all controlled by skip_builtin)
-            result.filtered_not_event = (
-                filter_result.filtered_not_event
-                + filter_result.filtered_placeholder
-                + filter_result.filtered_unsupported_sport
-            )
-            result.filtered_include_regex = filter_result.filtered_include
-            result.filtered_exclude_regex = filter_result.filtered_exclude
-
-            if not streams:
-                result.errors.append("All streams filtered out by regex patterns")
-                result.completed_at = datetime.now()
-                stats_run.complete(status="completed", error="All streams filtered")
-                save_run(conn, stats_run)
-                update_group_stats(
-                    conn,
-                    group.id,
-                    stream_count=0,
-                    matched_count=0,
-                    filtered_stale=filter_result.filtered_stale,
-                    filtered_include_regex=filter_result.filtered_include,
-                    filtered_exclude_regex=filter_result.filtered_exclude,
-                    filtered_not_event=filter_result.filtered_not_event,
-                    total_stream_count=result.streams_fetched,  # V1 parity
-                )
-                return result
-
-            # Step 2: Fetch events (use parent's leagues if child has none)
-            leagues = self._resolve_effective_leagues(conn, group)
-            if not leagues:
-                # Inherit from parent - need to look up parent
-                from teamarr.database.groups import get_group
-
-                parent = get_group(conn, group.parent_group_id)
-                if parent:
-                    leagues = self._resolve_effective_leagues(conn, parent)
-
-            events = self._fetch_events(leagues, target_date)
-
-            if not events:
-                result.errors.append(f"No events found for leagues: {leagues}")
-                result.completed_at = datetime.now()
-                stats_run.complete(status="completed", error="No events found")
-                save_run(conn, stats_run)
-                # Update stats - streams are eligible but no events to match against
-                update_group_stats(
-                    conn,
-                    group.id,
-                    stream_count=result.streams_after_filter,  # Eligible streams
-                    matched_count=0,
-                    filtered_stale=result.filtered_stale,
-                    filtered_include_regex=result.filtered_include_regex,
-                    filtered_exclude_regex=result.filtered_exclude_regex,
-                    failed_count=result.streams_after_filter,  # All unmatched due to no events
-                    filtered_not_event=result.filtered_not_event,
-                    total_stream_count=result.streams_fetched,
-                )
-                return result
-
-            # Step 3: Match streams to events
-            match_result = self._match_streams(
-                streams,
-                group,
-                target_date,
-                stream_progress_callback=stream_progress_callback,
-                status_callback=status_callback,
-                resolved_leagues=leagues,  # Pass inherited leagues for proper filtering
-            )
-            result.streams_matched = match_result.matched_count
-            result.streams_unmatched = match_result.unmatched_count
-            stats_run.streams_matched = match_result.matched_count
-            stats_run.streams_unmatched = match_result.unmatched_count
-            stats_run.streams_cached = match_result.cache_hits
-
-            # Save detailed match results for analysis
-            self._save_match_details(
-                conn=conn,
-                run_id=stats_run.id,
-                group_id=group.id,
-                group_name=group.name,
-                streams=streams,
-                match_result=match_result,
-            )
-
-            # Step 4: Add matched streams to parent's channels
-            matched_streams = self._build_matched_stream_list(
-                streams, match_result, stream_timezone=group.stream_timezone
-            )
-
-            # Build event lookup BEFORE team filtering (for cleanup)
-            # Use segment-aware event_id to match channel.event_id storage
-            def _effective_event_id(m):
-                event = m.get("event")
-                if not event or not hasattr(event, "id"):
-                    return None
-                segment = m.get("segment")
-                return f"{event.id}-{segment}" if segment else event.id
-
-            all_matched_events = {
-                _effective_event_id(m): m.get("event")
-                for m in matched_streams
-                if _effective_event_id(m)
-            }
-
-            # Apply team include/exclude filtering (inherits from parent if not set)
-            matched_streams, filtered_team_count = self._filter_by_teams(
-                matched_streams, group, conn
-            )
-            result.filtered_team = filtered_team_count
-
-            # Build set of event IDs that passed the filter (segment-aware)
-            passed_event_ids = {
-                _effective_event_id(m) for m in matched_streams if _effective_event_id(m)
-            }
-
-            # Cleanup existing channels that no longer pass team filter
-            # Note: Child groups add streams to PARENT channels, so cleanup here
-            # removes channels that were created for events now excluded.
-            cleanup_count = self._cleanup_team_filtered_channels(
-                group, conn, all_matched_events, passed_event_ids
-            )
-            if cleanup_count > 0:
-                result.channels_deleted = cleanup_count
-                logger.info(
-                    "[EVENT_EPG] Child group cleanup: %d channels due to team filter",
-                    cleanup_count,
-                )
-
-            if matched_streams:
-                child_processor = self._get_child_processor()
-                child_result = child_processor.process_child_streams(
-                    child_group={"id": group.id, "name": group.name},
-                    parent_group_id=group.parent_group_id,
-                    matched_streams=matched_streams,
-                )
-
-                # Map child result to processing result
-                result.channels_created = 0  # Child groups don't create channels
-                result.channels_existing = child_result.added_count
-                result.channels_skipped = child_result.skipped_count
-                result.channel_errors = child_result.error_count
-
-                stats_run.channels_created = 0
-                stats_run.channels_updated = child_result.added_count
-                stats_run.channels_skipped = child_result.skipped_count
-                stats_run.channels_errors = child_result.error_count
-
-                for error in child_result.errors:
-                    result.errors.append(f"Child stream error: {error}")
-
-            # No XMLTV generation for child groups
-            result.programmes_generated = 0
-
-            stats_run.complete(status="completed")
-
-            # Update group's processing stats
-            update_group_stats(
-                conn,
-                group.id,
-                stream_count=result.streams_after_filter,
-                matched_count=result.streams_matched,
-                filtered_stale=result.filtered_stale,
-                filtered_include_regex=result.filtered_include_regex,
-                filtered_exclude_regex=result.filtered_exclude_regex,
-                failed_count=result.streams_unmatched,
-                filtered_not_event=result.filtered_not_event,
-                filtered_team=result.filtered_team,
-                streams_excluded=result.streams_excluded,
-                total_stream_count=result.streams_fetched,  # V1 parity
-                excluded_event_final=result.excluded_event_final,
-                excluded_event_past=result.excluded_event_past,
-                excluded_before_window=result.excluded_before_window,
-                excluded_league_not_included=result.excluded_league_not_included,
-            )
-
-        except Exception as e:
-            logger.exception(f"Error processing child group {group.name}")
-            result.errors.append(str(e))
-            stats_run.complete(status="failed", error=str(e))
-
-        save_run(conn, stats_run)
-        result.completed_at = datetime.now()
-        return result
-
-    def _get_child_processor(self) -> ChildStreamProcessor:
-        """Get or create ChildStreamProcessor instance."""
-        channel_manager = self._dispatcharr_client.channels if self._dispatcharr_client else None
-
-        return ChildStreamProcessor(
-            db_factory=self._db_factory,
-            channel_manager=channel_manager,
-        )
 
     def _run_enforcement(
         self,
@@ -1966,37 +1594,32 @@ class EventGroupProcessor:
         Returns:
             Tuple of (include_teams, exclude_teams, mode, bypass_filter_for_playoffs)
         """
-        from teamarr.database.groups import get_group
         from teamarr.database.settings import get_team_filter_settings
 
-        # Get global settings for defaults
         settings = get_team_filter_settings(conn)
 
         # Determine bypass_filter_for_playoffs (group override -> global default)
         bypass_playoffs = group.bypass_filter_for_playoffs
-        if bypass_playoffs is None and group.parent_group_id:
-            parent = get_group(conn, group.parent_group_id)
-            if parent:
-                bypass_playoffs = parent.bypass_filter_for_playoffs
         if bypass_playoffs is None:
             bypass_playoffs = settings.bypass_filter_for_playoffs
 
         # If group has its own filter, use it
         if group.include_teams or group.exclude_teams:
-            return group.include_teams, group.exclude_teams, group.team_filter_mode, bypass_playoffs
-
-        # Otherwise inherit from parent
-        if group.parent_group_id:
-            parent = get_group(conn, group.parent_group_id)
-            if parent and (parent.include_teams or parent.exclude_teams):
-                return (
-                    parent.include_teams, parent.exclude_teams,
-                    parent.team_filter_mode, bypass_playoffs
-                )
+            return (
+                group.include_teams,
+                group.exclude_teams,
+                group.team_filter_mode,
+                bypass_playoffs,
+            )
 
         # Fall back to global settings default
         if settings.include_teams or settings.exclude_teams:
-            return settings.include_teams, settings.exclude_teams, settings.mode, bypass_playoffs
+            return (
+                settings.include_teams,
+                settings.exclude_teams,
+                settings.mode,
+                bypass_playoffs,
+            )
 
         return None, None, "include", bypass_playoffs
 

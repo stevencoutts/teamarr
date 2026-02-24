@@ -347,7 +347,6 @@ def _calculate_auto_block_end(
         """SELECT id, sort_order
            FROM event_epg_groups
            WHERE channel_assignment_mode = 'auto'
-             AND parent_group_id IS NULL
              AND enabled = 1
            ORDER BY sort_order ASC""",
     ).fetchall()
@@ -463,7 +462,6 @@ def _calculate_strict_block_start(
         """SELECT id, sort_order
            FROM event_epg_groups
            WHERE channel_assignment_mode = 'auto'
-             AND parent_group_id IS NULL
              AND enabled = 1
            ORDER BY sort_order ASC""",
     ).fetchall()
@@ -530,7 +528,6 @@ def _calculate_rational_block_start(
         """SELECT id, sort_order
            FROM event_epg_groups
            WHERE channel_assignment_mode = 'auto'
-             AND parent_group_id IS NULL
              AND enabled = 1
            ORDER BY sort_order ASC""",
     ).fetchall()

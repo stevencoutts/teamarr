@@ -571,7 +571,7 @@ def _validate_channel_ranges(
         groups = conn.execute(
             """SELECT id, name, channel_assignment_mode, channel_start_number
                FROM event_epg_groups
-               WHERE enabled = 1 AND parent_group_id IS NULL"""
+               WHERE enabled = 1"""
         ).fetchall()
 
         for group in groups:

@@ -10,7 +10,6 @@ from .crud import (
     create_managed_channel,
     find_any_channel_for_event,
     find_existing_channel,
-    find_parent_channel_for_event,
     get_all_managed_channels,
     get_channels_pending_deletion,
     get_managed_channel,
@@ -72,7 +71,6 @@ __all__ = [
     "update_managed_channel",
     "mark_channel_deleted",
     "find_existing_channel",
-    "find_parent_channel_for_event",
     "find_any_channel_for_event",
     # Streams
     "add_stream_to_channel",

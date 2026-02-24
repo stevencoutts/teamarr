@@ -475,55 +475,6 @@ def find_existing_channel(
         return None
 
 
-def find_parent_channel_for_event(
-    conn: Connection,
-    parent_group_id: int,
-    event_id: str,
-    event_provider: str,
-    exception_keyword: str | None = None,
-) -> ManagedChannel | None:
-    """Find a parent group's channel for an event (used by child groups).
-
-    Child groups add their streams to parent's existing channels.
-    This function finds the appropriate parent channel, considering
-    exception keywords for sub-consolidated channels.
-
-    Args:
-        conn: Database connection
-        parent_group_id: Parent group ID
-        event_id: Event ID
-        event_provider: Provider name
-        exception_keyword: Optional keyword for sub-consolidated channel lookup
-
-    Returns:
-        Parent's ManagedChannel or None if not found
-    """
-    if exception_keyword:
-        # Look for channel with matching keyword (sub-consolidated)
-        cursor = conn.execute(
-            """SELECT * FROM managed_channels
-               WHERE event_epg_group_id = ?
-                 AND event_id = ?
-                 AND event_provider = ?
-                 AND exception_keyword = ?
-                 AND deleted_at IS NULL""",
-            (parent_group_id, event_id, event_provider, exception_keyword),
-        )
-    else:
-        # Look for main channel (no keyword)
-        cursor = conn.execute(
-            """SELECT * FROM managed_channels
-               WHERE event_epg_group_id = ?
-                 AND event_id = ?
-                 AND event_provider = ?
-                 AND (exception_keyword IS NULL OR exception_keyword = '')
-                 AND deleted_at IS NULL""",
-            (parent_group_id, event_id, event_provider),
-        )
-    row = cursor.fetchone()
-    if row:
-        return ManagedChannel.from_row(dict(row))
-    return None
 
 
 def find_any_channel_for_event(
