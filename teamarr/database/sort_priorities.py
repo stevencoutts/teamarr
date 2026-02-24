@@ -68,10 +68,9 @@ def get_active_sort_priorities(conn: Connection) -> list[SortPriority]:
     # The leagues column is a JSON array like ["nfl", "nba"]
     cursor = conn.execute("""
         SELECT DISTINCT l.sport, l.league_code
-        FROM event_epg_groups g, json_each(g.leagues) AS je
+        FROM sports_subscription s, json_each(s.leagues) AS je
         JOIN leagues l ON je.value = l.league_code
-        WHERE g.channel_assignment_mode = 'auto'
-          AND g.enabled = 1
+        WHERE s.id = 1
     """)
     active_leagues = {(row["sport"], row["league_code"]) for row in cursor.fetchall()}
     active_sports = {sport for sport, _ in active_leagues}
@@ -280,11 +279,10 @@ def auto_populate_sort_priorities(conn: Connection) -> int:
             COALESCE(l.sport, lc.sport) as sport,
             je.value as league_code,
             CASE WHEN l.league_code IS NOT NULL THEN 0 ELSE 1 END as is_discovered
-        FROM event_epg_groups g, json_each(g.leagues) AS je
+        FROM sports_subscription s, json_each(s.leagues) AS je
         LEFT JOIN leagues l ON je.value = l.league_code
         LEFT JOIN league_cache lc ON je.value = lc.league_slug
-        WHERE g.channel_assignment_mode = 'auto'
-          AND g.enabled = 1
+        WHERE s.id = 1
           AND COALESCE(l.sport, lc.sport) IS NOT NULL
         ORDER BY is_discovered, COALESCE(l.sport, lc.sport), je.value
     """)

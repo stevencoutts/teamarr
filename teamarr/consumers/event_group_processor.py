@@ -352,40 +352,65 @@ class EventGroupProcessor:
         # while ensuring groups that need fresh API data can still get it
         self._shared_events: dict[str, tuple[list[Event], bool]] = {}
 
-    def _resolve_effective_leagues(
-        self, conn: Connection, group: EventEPGGroup
-    ) -> list[str]:
-        """Resolve effective leagues for a group based on soccer_mode.
+    def _resolve_subscription_leagues(self, conn: Connection) -> list[str]:
+        """Resolve leagues from the global sports subscription.
+
+        Called once per generation run, result shared across all groups.
+        Handles soccer_mode resolution (all/teams/manual) from the
+        global subscription.
 
         Args:
             conn: Database connection
-            group: Event EPG group
 
         Returns:
-            List of league codes to use for event fetching/matching.
-            - soccer_mode='all': All enabled soccer leagues
-            - soccer_mode='teams': Leagues discovered from followed teams
-            - soccer_mode='manual' or NULL: group.leagues as-is
+            List of league codes from the subscription, with soccer
+            leagues expanded based on soccer_mode.
         """
-        if group.soccer_mode == "all":
-            return get_enabled_soccer_leagues(conn)
+        from teamarr.database.subscription import get_subscription
 
-        if group.soccer_mode == "teams" and group.soccer_followed_teams:
-            # Discover leagues from followed teams using team_cache
+        sub = get_subscription(conn)
+        base_leagues = list(sub.leagues) if sub.leagues else []
+
+        if sub.soccer_mode == "all":
+            # Replace any manually-selected soccer leagues with ALL enabled
+            soccer_leagues = get_enabled_soccer_leagues(conn)
+            # Remove existing soccer leagues, add all
+            non_soccer = [
+                lg for lg in base_leagues if lg not in soccer_leagues
+            ]
+            # Also keep non-soccer leagues that happen to not be in the
+            # soccer set (they're from other sports)
+            return non_soccer + soccer_leagues
+
+        if sub.soccer_mode == "teams" and sub.soccer_followed_teams:
             from teamarr.consumers.cache.queries import CacheQueries
 
             cache = CacheQueries(self._db_factory)
-            leagues: set[str] = set()
-            for team in group.soccer_followed_teams:
+            discovered: set[str] = set()
+            for team in sub.soccer_followed_teams:
                 provider = team.get("provider", "espn")
                 team_id = team.get("team_id")
                 if team_id:
-                    team_leagues = cache.get_team_leagues(team_id, provider, sport="soccer")
-                    leagues.update(team_leagues)
-            return list(leagues) if leagues else group.leagues
+                    team_leagues = cache.get_team_leagues(
+                        team_id, provider, sport="soccer"
+                    )
+                    discovered.update(team_leagues)
+            # Merge discovered soccer leagues with base leagues
+            return list(set(base_leagues) | discovered)
 
-        # 'manual' or NULL use explicit leagues
-        return group.leagues
+        # 'manual' or NULL: use subscription leagues as-is
+        return base_leagues
+
+    def _get_subscription_leagues(self, conn: Connection) -> list[str]:
+        """Get subscription leagues, cached for the current run.
+
+        Resolves once per generation run and caches the result.
+        """
+        if not hasattr(self, "_subscription_leagues_cache"):
+            self._subscription_leagues_cache = (
+                self._resolve_subscription_leagues(conn)
+            )
+        return self._subscription_leagues_cache
 
     def process_group(
         self,
@@ -573,9 +598,12 @@ class EventGroupProcessor:
         batch_result = BatchProcessingResult()
         self._generation = generation  # Store for use in _do_matching
 
-        # Clear shared events cache at start of new generation run
+        # Clear caches at start of new generation run
         # This ensures fresh data and allows cross-group reuse within this run
         self._shared_events.clear()
+        # Clear subscription leagues cache so it's re-resolved for this run
+        if hasattr(self, "_subscription_leagues_cache"):
+            del self._subscription_leagues_cache
 
         with self._db_factory() as conn:
             groups = get_all_groups(conn, include_disabled=False)
@@ -1232,8 +1260,8 @@ class EventGroupProcessor:
                 return result
 
             # Step 2: Fetch events from data providers
-            # Resolve effective leagues based on soccer_mode
-            effective_leagues = self._resolve_effective_leagues(conn, group)
+            # Use subscription leagues (resolved once per run, cached on self)
+            effective_leagues = self._get_subscription_leagues(conn)
             events = self._fetch_events(effective_leagues, target_date)
             logger.info(
                 f"Fetched {len(events)} events for group '{group.name}' leagues={effective_leagues}"
@@ -1656,11 +1684,7 @@ class EventGroupProcessor:
         Uses fingerprint cache - streams only need to be matched once
         unless stream name changes.
 
-        Matching scope depends on group_mode:
-        - single: search ONLY the group's configured league (exactly 1).
-          Avoids cross-sport confusion when a team exists in multiple leagues.
-        - multi: search ALL known leagues, filter output to configured leagues.
-          Allows multi-sport groups to match broadly.
+        All groups use subscription leagues for both search and include scope.
 
         Args:
             streams: List of stream dicts
@@ -1668,25 +1692,24 @@ class EventGroupProcessor:
             target_date: Date to match events for
             stream_progress_callback: Optional callback(current, total, stream_name, matched)
             status_callback: Optional callback(status_message) for status updates
-            resolved_leagues: Pre-resolved leagues (for child groups inheriting from parent)
+            resolved_leagues: Pre-resolved leagues (subscription leagues)
         """
         # Load settings for event filtering
         with self._db_factory() as conn:
-            row = conn.execute("SELECT include_final_events FROM settings WHERE id = 1").fetchone()
-            include_final_events = bool(row["include_final_events"]) if row else False
+            row = conn.execute(
+                "SELECT include_final_events FROM settings WHERE id = 1"
+            ).fetchone()
+            include_final_events = (
+                bool(row["include_final_events"]) if row else False
+            )
 
         sport_durations = self._load_sport_durations_cached()
 
-        # Use resolved_leagues if provided (e.g., inherited from parent), else group.leagues
-        include_leagues = resolved_leagues if resolved_leagues else group.leagues
-
-        # Bifurcate search scope based on group_mode:
-        # - single: search only the configured league (exactly 1)
-        # - multi: search all known leagues (287+), filter to include_leagues in output
-        if group.group_mode == "single":
-            search_leagues = include_leagues
-        else:
-            search_leagues = self._get_all_known_leagues()
+        # All groups use subscription leagues for both search and include
+        include_leagues = (
+            resolved_leagues if resolved_leagues else group.leagues
+        )
+        search_leagues = include_leagues
 
         matcher = StreamMatcher(
             service=self._service,
