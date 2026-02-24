@@ -9,29 +9,19 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import {
   useGroup,
-  useGroups,
   useCreateGroup,
   useUpdateGroup,
 } from "@/hooks/useGroups"
-import { useTemplates } from "@/hooks/useTemplates"
 import type { EventGroupCreate, EventGroupUpdate } from "@/api/types"
-import { getLeagues } from "@/api/teams"
 import { TeamPicker } from "@/components/TeamPicker"
-import { LeaguePicker } from "@/components/LeaguePicker"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
 import { StreamProfileSelector } from "@/components/StreamProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
 import { TestPatternsModal, type PatternState } from "@/components/TestPatternsModal"
-import { TemplateAssignmentModal, type LocalTemplateAssignment } from "@/components/TemplateAssignmentModal"
-import { SoccerModeSelector, type SoccerMode } from "@/components/SoccerModeSelector"
-
-// Group mode
-type GroupMode = "single" | "multi" | null
 
 // Dispatcharr channel group
 interface ChannelGroup {
@@ -68,8 +58,6 @@ export function EventGroupForm() {
   const m3uAccountId = searchParams.get("m3u_account_id")
   const m3uAccountName = searchParams.get("m3u_account_name")
 
-  const [groupMode, setGroupMode] = useState<GroupMode>(null)
-
   // Form state
   const [formData, setFormData] = useState<EventGroupCreate>({
     name: m3uGroupName || "",
@@ -98,41 +86,10 @@ export function EventGroupForm() {
     bypass_filter_for_playoffs: null,  // null = use default
   })
 
-  // Single-league selection (stores the slug for single-league mode during creation)
-  const [selectedLeague, setSelectedLeague] = useState<string | null>(null)
-
-  // Track if this is a child group (inherits settings from parent)
-  const isChildGroup = formData.parent_group_id != null
-
-  // Multi-league selection
-  const [selectedLeagues, setSelectedLeagues] = useState<Set<string>>(new Set())
-
-  // Soccer mode state (for soccer-only groups)
-  const [soccerMode, setSoccerMode] = useState<SoccerMode>(null)
-  // Soccer followed teams (for teams mode)
-  const [soccerFollowedTeams, setSoccerFollowedTeams] = useState<Array<{ provider: string; team_id: string; name?: string | null }>>([])
-
   // Fetch existing group if editing
   const { data: group, isLoading: isLoadingGroup } = useGroup(
     isEdit ? Number(groupId) : 0
   )
-
-  // Fetch all groups for parent selection
-  const { data: groupsData } = useGroups(true)
-
-  // Fetch templates (event type only)
-  const { data: templates } = useTemplates()
-  const eventTemplates = templates?.filter(t => t.template_type === "event") || []
-
-  // Fetch leagues
-  const { data: leaguesResponse } = useQuery({
-    queryKey: ["leagues"],
-    queryFn: () => getLeagues(),
-  })
-  const cachedLeagues = leaguesResponse?.leagues
-
-  // Show soccer mode UI for all multi-league groups
-  const showSoccerMode = groupMode === 'multi'
 
   // Fetch channel groups from Dispatcharr
   const { data: channelGroups, refetch: refetchChannelGroups, isError: channelGroupsError, error: channelGroupsErrorMsg } = useQuery({
@@ -150,9 +107,8 @@ export function EventGroupForm() {
   // Filter state for channel groups
   const [channelGroupFilter, setChannelGroupFilter] = useState("")
 
-  // Collapsible section states - league selection starts expanded for new groups
+  // Collapsible section states
   const [basicSettingsExpanded, setBasicSettingsExpanded] = useState(false)
-  const [leagueSelectionExpanded, setLeagueSelectionExpanded] = useState(!isEdit)
   const [streamTimezoneExpanded, setStreamTimezoneExpanded] = useState(false)
   const [channelSettingsExpanded, setChannelSettingsExpanded] = useState(false)
   const [channelGroupExpanded, setChannelGroupExpanded] = useState(false)
@@ -167,11 +123,6 @@ export function EventGroupForm() {
 
   // Test Patterns modal
   const [testPatternsOpen, setTestPatternsOpen] = useState(false)
-
-  // Template Assignment modal (for multi-league groups)
-  const [templateModalOpen, setTemplateModalOpen] = useState(false)
-  // Pending template assignments for new groups (not saved to DB yet)
-  const [pendingTemplateAssignments, setPendingTemplateAssignments] = useState<LocalTemplateAssignment[]>([])
 
   // Channel profile default state - true = use global default, false = custom selection
   const [useDefaultProfiles, setUseDefaultProfiles] = useState(true)
@@ -262,10 +213,6 @@ export function EventGroupForm() {
         enabled: group.enabled,
       })
 
-      // Use stored group_mode (not derived from league count) to preserve user intent
-      const mode = group.group_mode as GroupMode || (group.leagues.length > 1 ? "multi" : "single")
-      setGroupMode(mode)
-
       // Set useDefaultProfiles based on whether channel_profile_ids is null (use default) or has a value
       setUseDefaultProfiles(group.channel_profile_ids === null || group.channel_profile_ids === undefined)
 
@@ -273,48 +220,8 @@ export function EventGroupForm() {
       // null means use global default, any array (even empty) means custom per-group filter
       const hasCustomTeamFilter = group.include_teams !== null || group.exclude_teams !== null
       setUseDefaultTeamFilter(!hasCustomTeamFilter)
-
-      if (mode === "single") {
-        // Single league mode - use first league
-        if (group.leagues.length > 0) {
-          setSelectedLeague(group.leagues[0])
-        }
-      } else {
-        // Multi league mode
-        setSelectedLeagues(new Set(group.leagues))
-      }
-
-      // Set soccer mode if present (map legacy 'all' → 'manual')
-      // Auto-detect: if group has soccer leagues but no soccer_mode, default to 'manual'
-      if (group.soccer_mode) {
-        const mode = group.soccer_mode === 'all' ? 'manual' : group.soccer_mode
-        setSoccerMode(mode as SoccerMode)
-      } else if (cachedLeagues) {
-        const hasSoccerLeagues = group.leagues.some(slug => {
-          const league = cachedLeagues.find(l => l.slug === slug)
-          return league?.sport?.toLowerCase() === 'soccer'
-        })
-        if (hasSoccerLeagues) {
-          setSoccerMode('manual')
-        }
-      }
-      // Set soccer followed teams if present
-      if (group.soccer_followed_teams) {
-        setSoccerFollowedTeams(group.soccer_followed_teams)
-      }
     }
-  }, [group, cachedLeagues])
-
-
-  // Sync selectedLeague/selectedLeagues to formData.leagues during create
-  // This ensures the UI shows correct mode badge and Event Overlap settings appear
-  useEffect(() => {
-    if (!isEdit && groupMode === "single" && selectedLeague) {
-      setFormData(prev => ({ ...prev, leagues: [selectedLeague] }))
-    } else if (!isEdit && groupMode === "multi") {
-      setFormData(prev => ({ ...prev, leagues: Array.from(selectedLeagues) }))
-    }
-  }, [selectedLeague, selectedLeagues, isEdit, groupMode])
+  }, [group])
 
   // Filtered channel groups based on search
   const filteredChannelGroups = useMemo(() => {
@@ -324,70 +231,15 @@ export function EventGroupForm() {
     return channelGroups.filter(g => g.name.toLowerCase().includes(filter))
   }, [channelGroups, channelGroupFilter])
 
-  // Eligible parent groups (single-league only, not multi-sport, not already a child)
-  // Use selectedLeague for create mode, formData.leagues[0] for edit mode
-  const currentLeague = selectedLeague || (formData.leagues.length === 1 ? formData.leagues[0] : null)
-  const eligibleParents = useMemo(() => {
-    if (!groupsData?.groups) return []
-    // Only single-league groups can have parents
-    if (!currentLeague) return []
-    return groupsData.groups.filter(g => {
-      // Can't be own parent
-      if (isEdit && g.id === Number(groupId)) return false
-      // Must be single-league
-      if (g.leagues.length !== 1) return false
-      // Must match our league
-      if (g.leagues[0] !== currentLeague) return false
-      // Can't be a child group (groups with parents can't be parents themselves)
-      if (g.parent_group_id != null) return false
-      return true
-    })
-  }, [groupsData, isEdit, groupId, currentLeague])
-
-  const handleModeSelect = (mode: GroupMode) => {
-    setGroupMode(mode)
-  }
-
-  // handleLeaguesContinue removed - V1-style single-page flow uses inline league selection
-
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
       toast.error("Group name is required")
       return
     }
 
-    // Update leagues from selection state if not already set (single-page flow)
-    let leagues = formData.leagues
-    if (leagues.length === 0) {
-      if (groupMode === "single" && selectedLeague) {
-        leagues = [selectedLeague]
-      } else if (groupMode === "multi" && selectedLeagues.size > 0) {
-        leagues = Array.from(selectedLeagues)
-      }
-    }
-
-    // Validate leagues (allow empty for soccer_mode='teams' which resolves dynamically)
-    if (leagues.length === 0 && soccerMode !== 'teams') {
-      toast.error("At least one league is required")
-      return
-    }
-
-    // Validate teams mode requires at least one followed team
-    if (soccerMode === 'teams' && soccerFollowedTeams.length === 0) {
-      toast.error("At least one team must be followed in teams mode")
-      return
-    }
-
     try {
       const submitData = {
         ...formData,
-        leagues,
-        // Only include group_mode if it's set (not null)
-        ...(groupMode && { group_mode: groupMode }),
-        // Include soccer_mode for soccer groups
-        soccer_mode: soccerMode,
-        // Include followed teams for teams mode
-        soccer_followed_teams: soccerMode === 'teams' ? soccerFollowedTeams : null,
       }
 
       if (isEdit) {
@@ -396,21 +248,14 @@ export function EventGroupForm() {
         // Compute clear flags for nullable fields that were changed from a value to null/undefined
         // This is required because the backend only clears fields when explicit clear_* flags are set
         if (group) {
-          // Helper to check if field should be cleared (had value, now doesn't)
           const shouldClear = (original: unknown, current: unknown) =>
             original != null && (current == null || current === undefined)
 
           if (shouldClear(group.channel_group_id, formData.channel_group_id)) {
             updateData.clear_channel_group_id = true
           }
-          if (shouldClear(group.template_id, formData.template_id)) {
-            updateData.clear_template = true
-          }
           if (shouldClear(group.channel_start_number, formData.channel_start_number)) {
             updateData.clear_channel_start_number = true
-          }
-          if (shouldClear(group.parent_group_id, formData.parent_group_id)) {
-            updateData.clear_parent_group_id = true
           }
           if (shouldClear(group.display_name, formData.display_name)) {
             updateData.clear_display_name = true
@@ -418,30 +263,12 @@ export function EventGroupForm() {
           if (shouldClear(group.stream_timezone, formData.stream_timezone)) {
             updateData.clear_stream_timezone = true
           }
-          if (shouldClear(group.soccer_mode, soccerMode)) {
-            updateData.clear_soccer_mode = true
-          }
-          // Clear followed teams when switching away from teams mode
-          if (group.soccer_followed_teams?.length && soccerMode !== 'teams') {
-            updateData.clear_soccer_followed_teams = true
-          }
         }
 
         await updateMutation.mutateAsync({ groupId: Number(groupId), data: updateData })
         toast.success(`Updated group "${formData.name}"`)
       } else {
-        // Include pending template assignments for new multi-league groups
-        const createData = {
-          ...submitData,
-          ...(pendingTemplateAssignments.length > 0 && {
-            template_assignments: pendingTemplateAssignments.map((a) => ({
-              template_id: a.template_id,
-              sports: a.sports,
-              leagues: a.leagues,
-            })),
-          }),
-        }
-        await createMutation.mutateAsync(createData)
+        await createMutation.mutateAsync(submitData)
         toast.success(`Created group "${formData.name}"`)
       }
       navigate("/event-groups")
@@ -479,156 +306,10 @@ export function EventGroupForm() {
         </div>
       </div>
 
-      {/* Add Mode: Group Type Selector (V1 style) */}
-      {!isEdit && !groupMode && (
-        <Card className="bg-muted/30">
-          <CardHeader>
-            <CardTitle>Group Type</CardTitle>
-            <CardDescription>Select the type of event group to create</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => handleModeSelect("single")}
-                className={cn(
-                  "flex flex-col items-start p-4 rounded-lg border-2 text-left transition-all",
-                  "border-border hover:border-primary/50"
-                )}
-              >
-                <span className="font-semibold">Single League</span>
-                <span className="text-xs text-muted-foreground mt-1">
-                  Match streams to events in one specific league (e.g., NFL, NBA, EPL)
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleModeSelect("multi")}
-                className={cn(
-                  "flex flex-col items-start p-4 rounded-lg border-2 text-left transition-all",
-                  "border-border hover:border-primary/50"
-                )}
-              >
-                <span className="font-semibold">Multi-Sport / Multi-League</span>
-                <span className="text-xs text-muted-foreground mt-1">
-                  Match streams across multiple sports and leagues (e.g., ESPN+)
-                </span>
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* League Selection - Single League Mode (add mode only) */}
-      {groupMode === "single" && !isEdit && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Select League</CardTitle>
-            <CardDescription>
-              Choose the league to match streams against
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <LeaguePicker
-              selectedLeagues={selectedLeague ? [selectedLeague] : []}
-              onSelectionChange={(leagues) => setSelectedLeague(leagues[0] || null)}
-              singleSelect
-              maxHeight="max-h-72"
-              showSelectedBadges={false}
-            />
-
-            {/* Parent Group Selection */}
-            {selectedLeague && eligibleParents.length > 0 && (
-              <div className="space-y-2 pt-4 border-t">
-                <Label>Parent Group (Optional)</Label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Child groups inherit all settings from parent and add streams to parent's channels.
-                </p>
-                <Select
-                  value={formData.parent_group_id?.toString() || ""}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    parent_group_id: e.target.value ? Number(e.target.value) : null
-                  })}
-                >
-                  <option value="">No parent (independent group)</option>
-                  {eligibleParents.map(g => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </Select>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Settings Section - shown when leagues selected, mode chosen, or in edit mode */}
-      {(isEdit || groupMode !== null || formData.leagues.length > 0 || selectedLeague || selectedLeagues.size > 0) && (
-        <div className="space-y-6">
-          {/* Child Group Notice */}
-          {isChildGroup && (
-            <Card className="border-blue-500/50 bg-blue-500/5">
-              <CardContent className="py-4">
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl">👶</span>
-                  <div>
-                    <p className="font-medium">Child Group</p>
-                    <p className="text-sm text-muted-foreground">
-                      This group inherits league, template, and channel settings from its parent.
-                      Only enabled status and custom regex patterns can be configured here.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Group Type Indicator - hidden for child groups */}
-          {!isChildGroup && (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">Group Type</Label>
-                <span className="text-xs text-muted-foreground/70">Set at creation, cannot be changed</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-md border-2 text-sm",
-                    formData.leagues.length <= 1
-                      ? "border-primary bg-primary/10 text-foreground"
-                      : "border-muted bg-muted/30 text-muted-foreground"
-                  )}
-                >
-                  <div className={cn(
-                    "w-3 h-3 rounded-full border-2",
-                    formData.leagues.length <= 1
-                      ? "border-primary bg-primary"
-                      : "border-muted-foreground/50"
-                  )} />
-                  <span>Single League</span>
-                </div>
-                <div
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-md border-2 text-sm",
-                    formData.leagues.length > 1
-                      ? "border-primary bg-primary/10 text-foreground"
-                      : "border-muted bg-muted/30 text-muted-foreground"
-                  )}
-                >
-                  <div className={cn(
-                    "w-3 h-3 rounded-full border-2",
-                    formData.leagues.length > 1
-                      ? "border-primary bg-primary"
-                      : "border-muted-foreground/50"
-                  )} />
-                  <span>Multi-League</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Child Group Basic Settings - only name and enabled */}
-          {isChildGroup && (
+      {/* Settings Section */}
+      <div className="space-y-6">
+          {/* Basic Settings (name and enabled only, for new groups without full edit context) */}
+          {!isEdit && (
             <Card>
               <CardHeader>
                 <CardTitle>Basic Settings</CardTitle>
@@ -645,9 +326,9 @@ export function EventGroupForm() {
                   <p className="text-xs text-muted-foreground">Name from M3U group</p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="display_name_child">Display Name (Optional)</Label>
+                  <Label htmlFor="display_name_new">Display Name (Optional)</Label>
                   <Input
-                    id="display_name_child"
+                    id="display_name_new"
                     value={formData.display_name || ""}
                     onChange={(e) => setFormData({ ...formData, display_name: e.target.value || null })}
                     placeholder="Override name for display in UI"
@@ -667,8 +348,8 @@ export function EventGroupForm() {
             </Card>
           )}
 
-          {/* Basic Info - hidden for child groups (inherited from parent) */}
-          {!isChildGroup && <Card>
+          {/* Basic Info (edit mode) */}
+          {isEdit && <Card>
             <CardHeader
               className="cursor-pointer hover:bg-muted/50 rounded-t-lg"
               onClick={() => setBasicSettingsExpanded(!basicSettingsExpanded)}
@@ -683,7 +364,7 @@ export function EventGroupForm() {
               </div>
             </CardHeader>
             {basicSettingsExpanded && <CardContent className="space-y-4">
-              <div className={cn("grid gap-4", isChildGroup ? "grid-cols-1" : "grid-cols-2")}>
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Group Name</Label>
                   <Input
@@ -707,130 +388,6 @@ export function EventGroupForm() {
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                {!isChildGroup && (
-                  <div className="space-y-2">
-                    <Label htmlFor="template">Event Template</Label>
-                    {/* Multi-league groups: show "Manage Templates" button */}
-                    {formData.leagues.length > 1 ? (
-                      <>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="w-full justify-start"
-                          onClick={() => setTemplateModalOpen(true)}
-                        >
-                          Manage Templates...
-                          {!isEdit && pendingTemplateAssignments.length > 0 && (
-                            <Badge variant="secondary" className="ml-2">
-                              {pendingTemplateAssignments.length}
-                            </Badge>
-                          )}
-                        </Button>
-                        <p className="text-xs text-muted-foreground">
-                          {isEdit
-                            ? "Assign different templates per sport/league"
-                            : pendingTemplateAssignments.length > 0
-                              ? `${pendingTemplateAssignments.length} template assignment(s) configured`
-                              : "Configure template assignments per sport/league"}
-                        </p>
-                      </>
-                    ) : (
-                      /* Single-league groups: simple dropdown */
-                      <>
-                        <Select
-                          id="template"
-                          value={formData.template_id?.toString() || ""}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              template_id: e.target.value ? Number(e.target.value) : null,
-                            })
-                          }
-                        >
-                          <option value="">Unassigned</option>
-                          {eventTemplates.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          Only event-type templates are shown
-                        </p>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Show selected leagues in edit mode */}
-              {isEdit && groupMode === "single" && (
-                <div className="space-y-2">
-                  <Label>League</Label>
-                  <div className="flex items-center gap-2">
-                    {formData.leagues.map(slug => {
-                      const league = cachedLeagues?.find(l => l.slug === slug)
-                      return (
-                        <Badge key={slug} variant="secondary" className="gap-1.5 py-1.5 px-3">
-                          {league?.logo_url && (
-                            <img src={league.logo_url} alt="" className="h-4 w-4 object-contain" />
-                          )}
-                          {league?.name || slug}
-                        </Badge>
-                      )
-                    })}
-                    <span className="text-xs text-muted-foreground ml-2">
-                      (set on import)
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Parent Group - edit mode, single-league groups */}
-              {isEdit && groupMode === "single" && (
-                <div className="space-y-2">
-                  <Label>Parent Group {isChildGroup ? "" : "(Optional)"}</Label>
-                  <Select
-                    value={formData.parent_group_id?.toString() || ""}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      parent_group_id: e.target.value ? Number(e.target.value) : null
-                    })}
-                  >
-                    <option value="">No parent (independent group)</option>
-                    {eligibleParents.map(g => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
-                  </Select>
-
-                  {/* Warning when parent relationship is changing */}
-                  {group && formData.parent_group_id !== group.parent_group_id && (
-                    <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-2 mt-2">
-                      <p className="text-xs text-amber-600 dark:text-amber-400">
-                        {group.parent_group_id && !formData.parent_group_id ? (
-                          // Child → Standalone
-                          <>⚠️ This group will become independent. Settings will be copied from current parent.</>
-                        ) : group.parent_group_id && formData.parent_group_id ? (
-                          // Child → Different Parent
-                          <>⚠️ Streams will be added to the new parent's channels on next generation.</>
-                        ) : (
-                          // Standalone → Child
-                          <>⚠️ This group's streams will be added to parent's channels. Own channel settings will be ignored.</>
-                        )}
-                      </p>
-                    </div>
-                  )}
-
-                  <p className="text-xs text-muted-foreground">
-                    {eligibleParents.length === 0
-                      ? "No eligible parent groups for this league"
-                      : isChildGroup
-                        ? "Select a different parent or choose 'No parent' to make standalone"
-                        : "Child groups inherit settings and add streams to parent's channels"}
-                  </p>
-                </div>
-              )}
 
               {/* M3U Source Info - watermark style */}
               {formData.m3u_group_name && (
@@ -852,94 +409,7 @@ export function EventGroupForm() {
             </CardContent>}
           </Card>}
 
-          {/* League Selection - combined soccer mode + other sports for multi-league groups */}
-          {showSoccerMode && !isChildGroup && (
-            <Card>
-              <CardHeader
-                className="cursor-pointer hover:bg-muted/50 rounded-t-lg"
-                onClick={() => setLeagueSelectionExpanded(!leagueSelectionExpanded)}
-              >
-                <div className="flex items-center gap-2">
-                  {leagueSelectionExpanded ? (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <div>
-                    <CardTitle>League Selection</CardTitle>
-                    {leagueSelectionExpanded && (
-                      <CardDescription>
-                        Configure which leagues this group will match
-                      </CardDescription>
-                    )}
-                  </div>
-                </div>
-              </CardHeader>
-              {leagueSelectionExpanded && <CardContent className="space-y-6">
-                {/* Non-Soccer Sports Section */}
-                <div className="space-y-3">
-                  <Label className="text-base font-medium">Non-Soccer Sports</Label>
-                  <LeaguePicker
-                    selectedLeagues={Array.from(selectedLeagues).filter(slug => {
-                      // Only show non-soccer leagues in this picker
-                      const league = cachedLeagues?.find(l => l.slug === slug)
-                      return league?.sport?.toLowerCase() !== 'soccer'
-                    })}
-                    onSelectionChange={(otherLeagues) => {
-                      // Merge with soccer leagues
-                      const soccerLeagues = Array.from(selectedLeagues).filter(slug => {
-                        const league = cachedLeagues?.find(l => l.slug === slug)
-                        return league?.sport?.toLowerCase() === 'soccer'
-                      })
-                      const allLeagues = [...soccerLeagues, ...otherLeagues]
-                      setSelectedLeagues(new Set(allLeagues))
-                      setFormData(prev => ({ ...prev, leagues: allLeagues }))
-                    }}
-                    excludeSport="soccer"
-                    maxHeight="max-h-64"
-                    showSearch={true}
-                    showSelectedBadges={true}
-                    maxBadges={10}
-                  />
-                </div>
-
-                {/* Divider */}
-                <div className="border-t" />
-
-                {/* Soccer Mode Section */}
-                <div className="space-y-3">
-                  <Label className="text-base font-medium">Soccer Leagues</Label>
-                  <SoccerModeSelector
-                    mode={soccerMode}
-                    onModeChange={(mode) => {
-                      setSoccerMode(mode)
-                      // When switching to 'teams' mode, soccer leagues are auto-managed
-                      // Keep any non-soccer leagues the user has selected
-                    }}
-                    selectedLeagues={Array.from(selectedLeagues).filter(slug => {
-                      // Only pass soccer leagues to SoccerModeSelector
-                      const league = cachedLeagues?.find(l => l.slug === slug)
-                      return league?.sport?.toLowerCase() === 'soccer'
-                    })}
-                    onLeaguesChange={(soccerLeagues) => {
-                      // Merge soccer leagues with existing non-soccer leagues
-                      const nonSoccerLeagues = Array.from(selectedLeagues).filter(slug => {
-                        const league = cachedLeagues?.find(l => l.slug === slug)
-                        return league?.sport?.toLowerCase() !== 'soccer'
-                      })
-                      const allLeagues = [...nonSoccerLeagues, ...soccerLeagues]
-                      setSelectedLeagues(new Set(allLeagues))
-                      setFormData(prev => ({ ...prev, leagues: allLeagues }))
-                    }}
-                    followedTeams={soccerFollowedTeams}
-                    onFollowedTeamsChange={setSoccerFollowedTeams}
-                  />
-                </div>
-              </CardContent>}
-            </Card>
-          )}
-
-          {/* Custom Regex - Collapsible section (available for all groups including children) */}
+          {/* Custom Regex */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between py-3 rounded-t-lg">
               <button
@@ -1306,9 +776,8 @@ export function EventGroupForm() {
             )}
           </Card>
 
-          {/* Team Filtering - only show for parent groups */}
-          {!isChildGroup && (
-            <Card>
+          {/* Team Filtering */}
+          <Card>
               <button
                 type="button"
                 onClick={() => setTeamFilterExpanded(!teamFilterExpanded)}
@@ -1358,7 +827,7 @@ export function EventGroupForm() {
                   {!useDefaultTeamFilter && (
                     <>
                       <p className="text-sm text-muted-foreground">
-                        Configure a custom team filter for this group. Child groups inherit this filter.
+                        Configure a custom team filter for this group.
                       </p>
 
                       {/* Mode selector */}
@@ -1467,8 +936,7 @@ export function EventGroupForm() {
                   )}
                 </CardContent>
               )}
-            </Card>
-          )}
+          </Card>
 
           {/* Stream Timezone */}
           <Card>
@@ -1503,8 +971,8 @@ export function EventGroupForm() {
             </CardContent>}
           </Card>
 
-          {/* Channel Settings - hidden for child groups */}
-          {!isChildGroup && <Card>
+          {/* Channel Settings */}
+          <Card>
             <CardHeader
               className="cursor-pointer hover:bg-muted/50 rounded-t-lg"
               onClick={() => setChannelSettingsExpanded(!channelSettingsExpanded)}
@@ -1642,10 +1110,10 @@ export function EventGroupForm() {
                 )}
               </div>
             </CardContent>}
-          </Card>}
+          </Card>
 
-          {/* Channel Group Assignment - hidden for child groups */}
-          {!isChildGroup && <Card>
+          {/* Channel Group Assignment */}
+          <Card>
             <CardHeader
               className="cursor-pointer hover:bg-muted/50 rounded-t-lg"
               onClick={() => setChannelGroupExpanded(!channelGroupExpanded)}
@@ -1861,10 +1329,10 @@ export function EventGroupForm() {
                   </div>
                 </div>
             </CardContent>}
-          </Card>}
+          </Card>
 
-          {/* Channel Profiles - hidden for child groups */}
-          {!isChildGroup && <Card>
+          {/* Channel Profiles */}
+          <Card>
             <CardHeader
               className="cursor-pointer hover:bg-muted/50 rounded-t-lg"
               onClick={() => setChannelProfilesExpanded(!channelProfilesExpanded)}
@@ -1914,10 +1382,10 @@ export function EventGroupForm() {
                   disabled={useDefaultProfiles}
                 />
             </CardContent>}
-          </Card>}
+          </Card>
 
-          {/* Stream Profile - hidden for child groups */}
-          {!isChildGroup && <Card>
+          {/* Stream Profile */}
+          <Card>
             <CardHeader
               className="cursor-pointer hover:bg-muted/50 rounded-t-lg"
               onClick={() => setStreamProfileExpanded(!streamProfileExpanded)}
@@ -1947,7 +1415,7 @@ export function EventGroupForm() {
                 How streams are processed (ffmpeg, VLC, proxy, etc). Leave empty to use global default.
               </p>
             </CardContent>}
-          </Card>}
+          </Card>
 
           {/* Actions */}
           <div className="flex justify-end gap-2">
@@ -1961,7 +1429,6 @@ export function EventGroupForm() {
             </Button>
           </div>
         </div>
-      )}
 
       {/* Test Patterns Modal — bidirectional sync with form regex fields */}
       <TestPatternsModal
@@ -1971,19 +1438,6 @@ export function EventGroupForm() {
         initialPatterns={currentPatterns}
         onApply={handlePatternsApply}
       />
-
-      {/* Template Assignment Modal — for multi-league groups */}
-      {formData.leagues.length > 1 && (
-        <TemplateAssignmentModal
-          open={templateModalOpen}
-          onOpenChange={setTemplateModalOpen}
-          groupId={isEdit ? Number(groupId) : undefined}
-          groupName={formData.display_name || formData.name}
-          groupLeagues={formData.leagues}
-          localAssignments={!isEdit ? pendingTemplateAssignments : undefined}
-          onLocalChange={!isEdit ? setPendingTemplateAssignments : undefined}
-        />
-      )}
     </div>
   )
 }

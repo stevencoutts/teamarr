@@ -17,16 +17,10 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { Loader2, Tv, Eye, Plus, AlertCircle, Info, Check, Layers, Search } from "lucide-react"
-import { LeaguePicker } from "@/components/LeaguePicker"
-import { searchTeams } from "@/api/teams"
+import { Loader2, Tv, Eye, Plus, AlertCircle, Info, Check } from "lucide-react"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
 import { StreamProfileSelector } from "@/components/StreamProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
-import {
-  TemplateAssignmentModal,
-  type LocalTemplateAssignment,
-} from "@/components/TemplateAssignmentModal"
 
 // Types
 interface M3UAccount {
@@ -58,12 +52,6 @@ interface SelectedGroup {
   m3u_group_id: number
   m3u_group_name: string
   stream_count?: number
-}
-
-interface Template {
-  id: number
-  name: string
-  template_type: string
 }
 
 interface ChannelGroup {
@@ -98,90 +86,8 @@ async function fetchEnabledGroups(): Promise<EnabledGroup[]> {
   return response.groups
 }
 
-async function fetchTemplates(): Promise<Template[]> {
-  return api.get("/templates")
-}
-
 async function fetchChannelGroups(): Promise<ChannelGroup[]> {
   return api.get("/dispatcharr/channel-groups")
-}
-
-// Inline team search for soccer Follow Teams mode in bulk import
-function BulkImportTeamSearch({
-  selectedTeams,
-  onTeamsChange,
-  searchQuery,
-  onSearchChange,
-}: {
-  selectedTeams: Array<{ provider: string; team_id: string; name: string }>
-  onTeamsChange: (teams: Array<{ provider: string; team_id: string; name: string }>) => void
-  searchQuery: string
-  onSearchChange: (query: string) => void
-}) {
-  const { data: searchResults, isLoading } = useQuery({
-    queryKey: ["soccer-team-search-import", searchQuery],
-    queryFn: () => searchTeams(searchQuery, undefined, "soccer"),
-    enabled: searchQuery.length >= 2,
-    staleTime: 30 * 1000,
-  })
-
-  const filteredResults = useMemo(() => {
-    if (!searchResults?.teams) return []
-    return searchResults.teams.filter(
-      team => !selectedTeams.some(s => s.team_id === team.team_id && s.provider === team.provider)
-    )
-  }, [searchResults, selectedTeams])
-
-  return (
-    <div className="space-y-2">
-      {selectedTeams.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {selectedTeams.map((team) => (
-            <Badge key={`${team.provider}-${team.team_id}`} variant="secondary" className="gap-1">
-              {team.name}
-              <button
-                type="button"
-                onClick={() => onTeamsChange(selectedTeams.filter(t => !(t.team_id === team.team_id && t.provider === team.provider)))}
-                className="hover:text-destructive text-xs"
-              >
-                &times;
-              </button>
-            </Badge>
-          ))}
-        </div>
-      )}
-      <div className="relative">
-        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search soccer teams..."
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="pl-8 h-8 text-sm"
-        />
-        {isLoading && (
-          <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-        )}
-      </div>
-      {searchQuery.length >= 2 && !isLoading && filteredResults.length > 0 && (
-        <div className="border rounded-md max-h-40 overflow-y-auto divide-y">
-          {filteredResults.slice(0, 10).map((team) => (
-            <button
-              key={`${team.provider}-${team.team_id}`}
-              type="button"
-              onClick={() => {
-                onTeamsChange([...selectedTeams, { provider: team.provider, team_id: team.team_id, name: team.name }])
-                onSearchChange('')
-              }}
-              className="w-full text-left px-3 py-1.5 hover:bg-muted/50 text-sm"
-            >
-              <span className="font-medium">{team.name}</span>
-              <span className="text-xs text-muted-foreground ml-2">{team.league.toUpperCase()}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
 }
 
 export function EventGroupImport() {
@@ -196,9 +102,6 @@ export function EventGroupImport() {
 
   // Bulk import modal state
   const [showBulkModal, setShowBulkModal] = useState(false)
-  const [bulkMode, setBulkMode] = useState<"single" | "multi">("single")
-  const [bulkLeagues, setBulkLeagues] = useState<Set<string>>(new Set())
-  const [bulkTemplateId, setBulkTemplateId] = useState<number | null>(null)
   const [bulkChannelGroupId, setBulkChannelGroupId] = useState<number | null>(null)
   const [bulkChannelGroupMode, setBulkChannelGroupMode] = useState<string>('static')
   const [bulkChannelProfileIds, setBulkChannelProfileIds] = useState<(number | string)[]>([])
@@ -208,13 +111,6 @@ export function EventGroupImport() {
   const [bulkOverlapHandling, setBulkOverlapHandling] = useState<string>("add_stream")
   const [bulkEnabled, setBulkEnabled] = useState(true)
   const [bulkImporting, setBulkImporting] = useState(false)
-  // Soccer mode state for multi-league groups
-  const [bulkSoccerMode, setBulkSoccerMode] = useState<'all' | 'teams' | 'manual' | null>(null)
-  const [bulkSoccerTeams, setBulkSoccerTeams] = useState<Array<{ provider: string; team_id: string; name: string }>>([])
-  const [bulkSoccerTeamSearch, setBulkSoccerTeamSearch] = useState('')
-  // Template assignment state for multi-league groups
-  const [bulkTemplateAssignments, setBulkTemplateAssignments] = useState<LocalTemplateAssignment[]>([])
-  const [showTemplateModal, setShowTemplateModal] = useState(false)
 
   // Queries
   const accountsQuery = useQuery({
@@ -237,11 +133,6 @@ export function EventGroupImport() {
     queryKey: ["dispatcharr-group-streams", selectedAccount?.id, previewGroup?.id],
     queryFn: () => fetchGroupStreams(selectedAccount!.id, previewGroup!.id),
     enabled: !!selectedAccount && !!previewGroup,
-  })
-
-  const templatesQuery = useQuery({
-    queryKey: ["templates"],
-    queryFn: fetchTemplates,
   })
 
   const channelGroupsQuery = useQuery({
@@ -269,11 +160,6 @@ export function EventGroupImport() {
   // Check if all visible selectable groups are selected
   const allVisibleSelected = selectedAccount && selectableGroups.length > 0 &&
     selectableGroups.every((g) => selectedGroups.has(`${selectedAccount.id}:${g.id}`))
-
-  // Filter templates by type
-  const eventTemplates = (templatesQuery.data ?? []).filter(
-    (t) => t.template_type === "event"
-  )
 
   // Selection helpers
   const toggleGroupSelection = (group: M3UGroup) => {
@@ -347,8 +233,6 @@ export function EventGroupImport() {
 
   // Handle bulk import
   const handleBulkImport = async () => {
-    if (bulkLeagues.size === 0) return
-
     setBulkImporting(true)
     try {
       const response = await api.post<BulkCreateResponse>("/groups/bulk", {
@@ -359,17 +243,6 @@ export function EventGroupImport() {
           m3u_account_name: g.m3u_account_name,
         })),
         settings: {
-          group_mode: bulkMode,
-          leagues: Array.from(bulkLeagues),
-          // Use template_assignments if configured, otherwise use legacy template_id
-          template_id: bulkTemplateAssignments.length > 0 ? null : bulkTemplateId,
-          template_assignments: bulkTemplateAssignments.length > 0
-            ? bulkTemplateAssignments.map((a) => ({
-                template_id: a.template_id,
-                sports: a.sports,
-                leagues: a.leagues,
-              }))
-            : null,
           channel_group_id: bulkChannelGroupMode === 'static' ? bulkChannelGroupId : null,
           channel_group_mode: bulkChannelGroupMode,
           channel_profile_ids: bulkChannelProfileIds.length > 0 ? bulkChannelProfileIds : null,
@@ -378,10 +251,6 @@ export function EventGroupImport() {
           channel_sort_order: bulkChannelSortOrder,
           overlap_handling: bulkOverlapHandling,
           enabled: bulkEnabled,
-          // Soccer mode for multi-league groups
-          soccer_mode: bulkMode === 'multi' ? bulkSoccerMode : null,
-          soccer_followed_teams: bulkMode === 'multi' && bulkSoccerMode === 'teams' && bulkSoccerTeams.length > 0
-            ? bulkSoccerTeams : null,
         },
       })
 
@@ -406,19 +275,12 @@ export function EventGroupImport() {
 
   // Reset bulk modal state
   const openBulkModal = () => {
-    setBulkMode("single")
-    setBulkLeagues(new Set())
-    setBulkTemplateId(null)
-    setBulkTemplateAssignments([])
     setBulkChannelGroupId(null)
     setBulkChannelGroupMode('static')
     setBulkChannelProfileIds([])
     setBulkStreamTimezone(null)
     setBulkChannelSortOrder("time")
     setBulkOverlapHandling("add_stream")
-    setBulkSoccerMode(null)
-    setBulkSoccerTeams([])
-    setBulkSoccerTeamSearch('')
     setBulkEnabled(true)
     setShowBulkModal(true)
   }
@@ -741,142 +603,10 @@ export function EventGroupImport() {
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto space-y-6 px-1">
-            {/* Group Type */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Group Type</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBulkMode("single")
-                    setBulkLeagues(new Set())
-                  }}
-                  className={cn(
-                    "flex flex-col items-start p-3 rounded-lg border-2 text-left transition-all",
-                    bulkMode === "single"
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  )}
-                >
-                  <span className="font-medium text-sm">Single League</span>
-                  <span className="text-xs text-muted-foreground mt-1">
-                    One league per group (NFL, EPL, etc.)
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBulkMode("multi")
-                    setBulkLeagues(new Set())
-                  }}
-                  className={cn(
-                    "flex flex-col items-start p-3 rounded-lg border-2 text-left transition-all",
-                    bulkMode === "multi"
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  )}
-                >
-                  <span className="font-medium text-sm">Multi-Sport</span>
-                  <span className="text-xs text-muted-foreground mt-1">
-                    Multiple leagues (ESPN+, etc.)
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            {/* League Selection */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">
-                {bulkMode === "single" ? "League" : "Leagues"}
-              </Label>
-
-              <LeaguePicker
-                selectedLeagues={Array.from(bulkLeagues)}
-                onSelectionChange={(leagues) => setBulkLeagues(new Set(leagues))}
-                singleSelect={bulkMode === "single"}
-                maxHeight="max-h-48"
-                maxBadges={10}
-              />
-            </div>
-
-            {/* Soccer Mode (multi-league only) */}
-            {bulkMode === "multi" && (
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">Soccer Mode</Label>
-                <Select
-                  value={bulkSoccerMode ?? ''}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    setBulkSoccerMode(val ? val as 'all' | 'teams' | 'manual' : null)
-                    if (val !== 'teams') {
-                      setBulkSoccerTeams([])
-                      setBulkSoccerTeamSearch('')
-                    }
-                  }}
-                >
-                  <option value="">No soccer mode (use league list as-is)</option>
-                  <option value="all">All Soccer Leagues (auto-include new leagues)</option>
-                  <option value="teams">Follow Teams (auto-discover leagues)</option>
-                  <option value="manual">Manual Selection (use league picker above)</option>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {!bulkSoccerMode && "Soccer leagues from the picker above will be used directly."}
-                  {bulkSoccerMode === 'all' && "Groups will automatically include all enabled soccer leagues."}
-                  {bulkSoccerMode === 'teams' && "Groups will auto-discover leagues for followed teams."}
-                  {bulkSoccerMode === 'manual' && "Soccer leagues selected in the league picker above will be used."}
-                </p>
-                {bulkSoccerMode === 'teams' && (
-                  <BulkImportTeamSearch
-                    selectedTeams={bulkSoccerTeams}
-                    onTeamsChange={setBulkSoccerTeams}
-                    searchQuery={bulkSoccerTeamSearch}
-                    onSearchChange={setBulkSoccerTeamSearch}
-                  />
-                )}
-              </div>
-            )}
-
             {/* Settings */}
             <div className="space-y-4">
               <Label className="text-sm font-medium">Settings</Label>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Template</Label>
-                  {bulkMode === "multi" ? (
-                    <div className="space-y-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="w-full justify-start"
-                        onClick={() => setShowTemplateModal(true)}
-                      >
-                        <Layers className="h-4 w-4 mr-2" />
-                        Manage Templates...
-                        {bulkTemplateAssignments.length > 0 && (
-                          <Badge variant="secondary" className="ml-auto">
-                            {bulkTemplateAssignments.length}
-                          </Badge>
-                        )}
-                      </Button>
-                      <p className="text-xs text-muted-foreground">
-                        {bulkTemplateAssignments.length > 0
-                          ? `${bulkTemplateAssignments.length} template assignment(s)`
-                          : "Assign templates per sport/league"}
-                      </p>
-                    </div>
-                  ) : (
-                    <Select
-                      value={bulkTemplateId?.toString() || ""}
-                      onChange={(e) => setBulkTemplateId(e.target.value ? parseInt(e.target.value) : null)}
-                    >
-                      <option value="">None</option>
-                      {eventTemplates.map((t) => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
-                    </Select>
-                  )}
-                </div>
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Channel Group</Label>
                   <div className="space-y-2">
@@ -1000,6 +730,29 @@ export function EventGroupImport() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Channel Sort Order</Label>
+                  <Select
+                    value={bulkChannelSortOrder}
+                    onChange={(e) => setBulkChannelSortOrder(e.target.value)}
+                  >
+                    <option value="time">Time</option>
+                    <option value="sport_time">Sport → Time</option>
+                    <option value="league_time">League → Time</option>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Overlap Handling</Label>
+                  <Select
+                    value={bulkOverlapHandling}
+                    onChange={(e) => setBulkOverlapHandling(e.target.value)}
+                  >
+                    <option value="add_stream">Add stream to existing channel</option>
+                    <option value="add_only">Add only (skip if no existing)</option>
+                    <option value="create_all">Create all (ignore overlap)</option>
+                    <option value="skip">Skip overlapping events</option>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Enabled</Label>
                   <div className="flex items-center gap-2 h-9">
                     <Switch
@@ -1010,35 +763,6 @@ export function EventGroupImport() {
                   </div>
                 </div>
               </div>
-
-              {/* Multi-sport options */}
-              {bulkMode === "multi" && (
-                <div className="grid grid-cols-2 gap-4 pt-2 border-t">
-                  <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">Channel Sort Order</Label>
-                    <Select
-                      value={bulkChannelSortOrder}
-                      onChange={(e) => setBulkChannelSortOrder(e.target.value)}
-                    >
-                      <option value="time">Time</option>
-                      <option value="sport_time">Sport → Time</option>
-                      <option value="league_time">League → Time</option>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">Overlap Handling</Label>
-                    <Select
-                      value={bulkOverlapHandling}
-                      onChange={(e) => setBulkOverlapHandling(e.target.value)}
-                    >
-                      <option value="add_stream">Add stream to existing channel</option>
-                      <option value="add_only">Add only (skip if no existing)</option>
-                      <option value="create_all">Create all (ignore overlap)</option>
-                      <option value="skip">Skip overlapping events</option>
-                    </Select>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Groups to import */}
@@ -1063,7 +787,7 @@ export function EventGroupImport() {
             </Button>
             <Button
               onClick={handleBulkImport}
-              disabled={bulkImporting || bulkLeagues.size === 0}
+              disabled={bulkImporting}
             >
               {bulkImporting ? (
                 <>
@@ -1077,18 +801,6 @@ export function EventGroupImport() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Template Assignment Modal (for multi-league groups) */}
-      {showTemplateModal && (
-        <TemplateAssignmentModal
-          open={showTemplateModal}
-          onOpenChange={setShowTemplateModal}
-          groupName="Bulk Import"
-          groupLeagues={Array.from(bulkLeagues)}
-          localAssignments={bulkTemplateAssignments}
-          onLocalChange={setBulkTemplateAssignments}
-        />
-      )}
     </div>
   )
 }
