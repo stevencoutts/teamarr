@@ -1489,7 +1489,6 @@ class EventGroupProcessor:
         """Filter matched streams by team include/exclude configuration.
 
         Uses canonical team selection (provider, team_id) for unambiguous matching.
-        Filter is set on parent groups and inherited by children.
 
         When bypass_filter_for_playoffs is enabled, playoff games (season_type='postseason')
         bypass the team filter entirely.
@@ -1585,13 +1584,12 @@ class EventGroupProcessor:
         group: "EventEPGGroup",
         conn,
     ) -> tuple[list[dict] | None, list[dict] | None, str, bool]:
-        """Get team filter, inheriting from parent if needed, with settings fallback.
+        """Get team filter with settings fallback.
 
         Priority chain:
         1. Group's own filter (if configured)
-        2. Parent group's filter (if child and parent has filter)
-        3. Global settings default (if configured)
-        4. No filtering (default)
+        2. Global settings default (if configured)
+        3. No filtering (default)
 
         Returns:
             Tuple of (include_teams, exclude_teams, mode, bypass_filter_for_playoffs)

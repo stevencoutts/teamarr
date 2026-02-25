@@ -123,15 +123,14 @@ class GroupCreate(BaseModel):
     custom_regex_event_name: str | None = None
     custom_regex_event_name_enabled: bool = False
     skip_builtin_filter: bool = False
-    # Team filtering (canonical team selection, inherited by children)
+    # Team filtering (canonical team selection)
     include_teams: list[TeamFilterEntry] | None = None
     exclude_teams: list[TeamFilterEntry] | None = None
     team_filter_mode: str = "include"  # "include" (whitelist) or "exclude" (blacklist)
-    # Multi-sport enhancements (Phase 3)
     channel_sort_order: str = "time"
     overlap_handling: str = "add_stream"
     enabled: bool = True
-    # Template assignments for multi-league groups (optional, created after group)
+    # Deprecated: template_assignments now managed via subscription_templates
     template_assignments: list["GroupTemplateCreate"] | None = None
 
     @field_validator("channel_profile_ids", mode="before")
@@ -184,11 +183,10 @@ class GroupUpdate(BaseModel):
     custom_regex_event_name: str | None = None
     custom_regex_event_name_enabled: bool | None = None
     skip_builtin_filter: bool | None = None
-    # Team filtering (canonical team selection, inherited by children)
+    # Team filtering (canonical team selection)
     include_teams: list[TeamFilterEntry] | None = None
     exclude_teams: list[TeamFilterEntry] | None = None
     team_filter_mode: str | None = None  # "include" (whitelist) or "exclude" (blacklist)
-    # Multi-sport enhancements (Phase 3)
     channel_sort_order: str | None = None
     overlap_handling: str | None = None
     enabled: bool | None = None
@@ -704,8 +702,8 @@ def create_group(request: GroupCreate):
             soccer_followed_teams=[t.model_dump() for t in request.soccer_followed_teams]
             if request.soccer_followed_teams
             else None,
-            group_mode=request.group_mode,
-            parent_group_id=request.parent_group_id,
+            group_mode="multi",  # Hardcoded — hierarchy removed in v58
+            parent_group_id=None,  # Hardcoded — hierarchy removed in v58
             template_id=request.template_id,
             channel_start_number=request.channel_start_number,
             channel_group_id=request.channel_group_id,
@@ -891,7 +889,7 @@ def create_groups_bulk(request: BulkGroupCreateRequest):
                         if request.settings.soccer_followed_teams
                         else None
                     ),
-                    group_mode=request.settings.group_mode,
+                    group_mode="multi",  # Hardcoded — hierarchy removed in v58
                     template_id=legacy_template_id,
                     channel_group_id=request.settings.channel_group_id,
                     channel_group_mode=request.settings.channel_group_mode,
@@ -958,9 +956,6 @@ def update_groups_bulk(request: BulkGroupUpdateRequest):
 
     Only provided (non-None) fields will be updated across all selected groups.
     Use clear_* flags to explicitly set fields to NULL.
-
-    Note: All groups must have the same group_mode (single/multi) - the frontend
-    should prevent mixed selections.
     """
     from teamarr.database.groups import get_group, update_group
 
@@ -1245,8 +1240,8 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
                 soccer_followed_teams=[t.model_dump() for t in request.soccer_followed_teams]
                 if request.soccer_followed_teams
                 else None,
-                group_mode=request.group_mode,
-                parent_group_id=request.parent_group_id,
+                group_mode="multi",  # Hardcoded — hierarchy removed in v58
+                parent_group_id=None,  # Hardcoded — hierarchy removed in v58
                 template_id=request.template_id,
                 channel_start_number=request.channel_start_number,
                 channel_group_id=request.channel_group_id,
