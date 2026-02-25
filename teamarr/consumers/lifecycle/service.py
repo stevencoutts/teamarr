@@ -468,10 +468,11 @@ class ChannelLifecycleService:
 
                 # Channel group settings - now supports dynamic modes
                 static_channel_group_id = group_config.get("channel_group_id")
-                channel_group_mode = group_config.get("channel_group_mode", "static")
+                channel_group_mode = group_config.get(
+                    "channel_group_mode", "static"
+                )
 
-                # Parse profile IDs from group config (may contain wildcards like "{sport}", "{league}")  # noqa: E501
-                # Returns None if not configured, [] if explicitly empty, [1,2,...] if set
+                # Parse profile IDs from group config
                 raw_profile_ids = group_config.get("channel_profile_ids")
 
                 # Fallback to default profiles/stream profile from global settings
@@ -480,7 +481,18 @@ class ChannelLifecycleService:
                 dispatcharr_settings = get_dispatcharr_settings(conn)
 
                 if raw_profile_ids is None:
-                    raw_profile_ids = dispatcharr_settings.default_channel_profile_ids
+                    raw_profile_ids = (
+                        dispatcharr_settings.default_channel_profile_ids
+                    )
+
+                # Load per-league subscription configs for override
+                from teamarr.database.subscription import get_league_configs
+
+                league_configs = {
+                    lc.league_code: lc
+                    for lc in get_league_configs(conn)
+                }
+                self._league_configs = league_configs
 
                 # Stream profile: always global default
                 stream_profile_id = dispatcharr_settings.default_stream_profile_id
@@ -645,16 +657,31 @@ class ChannelLifecycleService:
                         event_sport = getattr(event, "sport", None)
                         event_league = getattr(event, "league", None)
 
-                        resolved_channel_group_id = self._dynamic_resolver.resolve_channel_group(
-                            mode=channel_group_mode,
-                            static_group_id=static_channel_group_id,
-                            event_sport=event_sport,
-                            event_league=event_league,
+                        # Per-league subscription config overrides
+                        effective_profile_ids = raw_profile_ids
+                        effective_group_id = static_channel_group_id
+                        effective_group_mode = channel_group_mode
+                        if event_league and event_league in league_configs:
+                            lc = league_configs[event_league]
+                            if lc.channel_profile_ids is not None:
+                                effective_profile_ids = lc.channel_profile_ids
+                            if lc.channel_group_id is not None:
+                                effective_group_id = lc.channel_group_id
+                            if lc.channel_group_mode is not None:
+                                effective_group_mode = lc.channel_group_mode
+
+                        resolved_channel_group_id = (
+                            self._dynamic_resolver.resolve_channel_group(
+                                mode=effective_group_mode,
+                                static_group_id=effective_group_id,
+                                event_sport=event_sport,
+                                event_league=event_league,
+                            )
                         )
 
                         resolved_channel_profile_ids = (
                             self._dynamic_resolver.resolve_channel_profiles(
-                                profile_ids=raw_profile_ids,
+                                profile_ids=effective_profile_ids,
                                 event_sport=event_sport,
                                 event_league=event_league,
                             )
@@ -1566,9 +1593,9 @@ class ChannelLifecycleService:
         |---------------------|---------------------|-----------------------------|
         | template            | name                | Template variable resolution|
         | managed_channels    | channel_number      | DB is source of truth       |
-        | group               | channel_group_id    | Simple compare              |
+        | league_config/group | channel_group_id    | Per-league → group → global |
         | current_stream      | streams             | M3U ID lookup               |
-        | group               | channel_profile_ids | Add/remove via profile API  |
+        | league_config/group | channel_profile_ids | Per-league → group → global |
         | template            | logo_id             | Upload/update if different  |
         | event_id            | tvg_id              | Ensures EPG matching        |
         | settings (global)   | stream_profile_id   | Always global default       |
@@ -1623,10 +1650,21 @@ class ChannelLifecycleService:
             event_sport = getattr(event, "sport", None)
             event_league = getattr(event, "league", None)
 
+            # Per-league subscription config overrides
+            effective_group_mode = channel_group_mode
+            effective_group_id = static_group_id
+            if event_league and hasattr(self, "_league_configs"):
+                lc = self._league_configs.get(event_league)
+                if lc:
+                    if lc.channel_group_id is not None:
+                        effective_group_id = lc.channel_group_id
+                    if lc.channel_group_mode is not None:
+                        effective_group_mode = lc.channel_group_mode
+
             # Resolve dynamic group ID (creates group in Dispatcharr if needed)
             new_group_id = self._dynamic_resolver.resolve_channel_group(
-                mode=channel_group_mode,
-                static_group_id=static_group_id,
+                mode=effective_group_mode,
+                static_group_id=effective_group_id,
                 event_sport=event_sport,
                 event_league=event_league,
             )
@@ -1770,6 +1808,13 @@ class ChannelLifecycleService:
         from teamarr.database.channels import update_managed_channel
 
         raw_group_profiles = group_config.get("channel_profile_ids")
+
+        # Per-league subscription config override for profiles
+        if event_league and hasattr(self, "_league_configs"):
+            lc = self._league_configs.get(event_league)
+            if lc and lc.channel_profile_ids is not None:
+                raw_group_profiles = lc.channel_profile_ids
+
         stored_profile_ids = self._parse_profile_ids(
             getattr(existing, "channel_profile_ids", None)
         )
