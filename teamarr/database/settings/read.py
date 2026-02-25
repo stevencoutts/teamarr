@@ -15,7 +15,6 @@ from .types import (
     DisplaySettings,
     DurationSettings,
     EPGSettings,
-    GoldZoneSettings,
     LifecycleSettings,
     ReconciliationSettings,
     SchedulerSettings,
@@ -177,7 +176,6 @@ def get_all_settings(conn: Connection) -> AllSettings:
         ),
         update_check=_build_update_check_settings(row),
         backup=_build_backup_settings(row),
-        gold_zone=_build_gold_zone_settings(row),
         epg_generation_counter=row["epg_generation_counter"] or 0,
         schema_version=row["schema_version"] or 2,
     )
@@ -596,54 +594,3 @@ def get_backup_settings(conn: Connection) -> BackupSettings:
         return BackupSettings()
 
     return _build_backup_settings(row)
-
-
-# Single source of truth for gold zone defaults
-_GOLD_ZONE_DEFAULTS = GoldZoneSettings()
-
-
-def _build_gold_zone_settings(row) -> GoldZoneSettings:
-    """Build GoldZoneSettings from DB row, using dataclass defaults for NULL values."""
-    d = _GOLD_ZONE_DEFAULTS
-
-    # Parse channel_profile_ids from JSON
-    profile_ids = None
-    raw_profiles = row["gold_zone_channel_profile_ids"]
-    if raw_profiles:
-        try:
-            profile_ids = json.loads(raw_profiles)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    return GoldZoneSettings(
-        enabled=bool(row["gold_zone_enabled"])
-        if row["gold_zone_enabled"] is not None
-        else d.enabled,
-        channel_number=row["gold_zone_channel_number"],
-        channel_group_id=row["gold_zone_channel_group_id"],
-        channel_profile_ids=profile_ids,
-        stream_profile_id=row["gold_zone_stream_profile_id"],
-    )
-
-
-def get_gold_zone_settings(conn: Connection) -> GoldZoneSettings:
-    """Get Gold Zone settings.
-
-    Args:
-        conn: Database connection
-
-    Returns:
-        GoldZoneSettings object
-    """
-    cursor = conn.execute(
-        """SELECT gold_zone_enabled, gold_zone_channel_number,
-                  gold_zone_channel_group_id, gold_zone_channel_profile_ids,
-                  gold_zone_stream_profile_id
-           FROM settings WHERE id = 1"""
-    )
-    row = cursor.fetchone()
-
-    if not row:
-        return GoldZoneSettings()
-
-    return _build_gold_zone_settings(row)

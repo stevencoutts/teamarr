@@ -332,31 +332,6 @@ class UpdateInfoModel(BaseModel):
 
 
 # =============================================================================
-# GOLD ZONE SETTINGS (Olympics Special Feature)
-# =============================================================================
-
-
-class GoldZoneSettingsModel(BaseModel):
-    """Gold Zone settings for Olympics coverage."""
-
-    enabled: bool = False
-    channel_number: int | None = None
-    channel_group_id: int | None = None
-    channel_profile_ids: list[int | str] | None = None
-    stream_profile_id: int | None = None
-
-
-class GoldZoneSettingsUpdate(BaseModel):
-    """Update model for Gold Zone settings."""
-
-    enabled: bool | None = None
-    channel_number: int | None = None
-    channel_group_id: int | None = None
-    channel_profile_ids: list[int | str] | None = None
-    stream_profile_id: int | None = None
-
-
-# =============================================================================
 # ALL SETTINGS
 # =============================================================================
 
@@ -375,7 +350,6 @@ class AllSettingsModel(BaseModel):
     channel_numbering: ChannelNumberingSettingsModel | None = None
     stream_ordering: StreamOrderingSettingsModel | None = None
     update_check: UpdateCheckSettingsModel | None = None
-    gold_zone: GoldZoneSettingsModel | None = None
     epg_generation_counter: int = 0
     schema_version: int = 44
 

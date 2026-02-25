@@ -11,7 +11,6 @@ from .read import (
     get_dispatcharr_settings,
     get_display_settings,
     get_epg_settings,
-    get_gold_zone_settings,
     get_lifecycle_settings,
     get_scheduler_settings,
     get_stream_filter_settings,
@@ -28,7 +27,6 @@ from .types import (
     DisplaySettings,
     DurationSettings,
     EPGSettings,
-    GoldZoneSettings,
     LifecycleSettings,
     ReconciliationSettings,
     SchedulerSettings,
@@ -46,7 +44,6 @@ from .update import (
     update_display_settings,
     update_duration_settings,
     update_epg_settings,
-    update_gold_zone_settings,
     update_lifecycle_settings,
     update_reconciliation_settings,
     update_scheduler_settings,
@@ -72,7 +69,6 @@ __all__ = [
     "ChannelNumberingSettings",
     "UpdateCheckSettings",
     "BackupSettings",
-    "GoldZoneSettings",
     "AllSettings",
     # Read operations
     "get_all_settings",
@@ -87,7 +83,6 @@ __all__ = [
     "get_channel_numbering_settings",
     "get_update_check_settings",
     "get_backup_settings",
-    "get_gold_zone_settings",
     # Update operations
     "update_dispatcharr_settings",
     "update_scheduler_settings",
@@ -101,6 +96,5 @@ __all__ = [
     "update_channel_numbering_settings",
     "update_update_check_settings",
     "update_backup_settings",
-    "update_gold_zone_settings",
     "increment_epg_generation_counter",
 ]
