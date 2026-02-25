@@ -405,4 +405,35 @@ export async function checkForUpdates(force: boolean = false): Promise<UpdateInf
   return api.get(`/updates/check?force=${force}`)
 }
 
+// Per-League Subscription Config Types
+export interface SubscriptionLeagueConfig {
+  league_code: string
+  channel_profile_ids: (number | string)[] | null
+  channel_group_id: number | null
+  channel_group_mode: string | null
+}
 
+export interface LeagueConfigListResponse {
+  configs: SubscriptionLeagueConfig[]
+  total: number
+}
+
+// Per-League Subscription Config API
+export async function getLeagueConfigs(): Promise<LeagueConfigListResponse> {
+  return api.get("/league-configs")
+}
+
+export async function upsertLeagueConfig(
+  leagueCode: string,
+  data: {
+    channel_profile_ids?: (number | string)[] | null
+    channel_group_id?: number | null
+    channel_group_mode?: string | null
+  }
+): Promise<SubscriptionLeagueConfig> {
+  return api.put(`/league-configs/${encodeURIComponent(leagueCode)}`, data)
+}
+
+export async function deleteLeagueConfig(leagueCode: string): Promise<void> {
+  return api.delete(`/league-configs/${encodeURIComponent(leagueCode)}`)
+}

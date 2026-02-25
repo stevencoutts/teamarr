@@ -32,6 +32,9 @@ import {
   getUpdateCheckSettings,
   updateUpdateCheckSettings,
   checkForUpdates,
+  getLeagueConfigs,
+  upsertLeagueConfig,
+  deleteLeagueConfig,
 } from "@/api/settings"
 import type {
   DispatcharrSettings,
@@ -354,4 +357,38 @@ export function useForceCheckForUpdates() {
   })
 }
 
+export function useLeagueConfigs() {
+  return useQuery({
+    queryKey: ["league-configs"],
+    queryFn: getLeagueConfigs,
+  })
+}
 
+export function useUpsertLeagueConfig() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ leagueCode, data }: {
+      leagueCode: string
+      data: {
+        channel_profile_ids?: (number | string)[] | null
+        channel_group_id?: number | null
+        channel_group_mode?: string | null
+      }
+    }) => upsertLeagueConfig(leagueCode, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["league-configs"] })
+    },
+  })
+}
+
+export function useDeleteLeagueConfig() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (leagueCode: string) => deleteLeagueConfig(leagueCode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["league-configs"] })
+    },
+  })
+}

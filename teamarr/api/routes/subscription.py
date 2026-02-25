@@ -67,6 +67,30 @@ class TemplateAssignmentListResponse(BaseModel):
     total: int
 
 
+class LeagueConfigResponse(BaseModel):
+    """Per-league subscription config response."""
+
+    league_code: str
+    channel_profile_ids: list[int | str] | None = None
+    channel_group_id: int | None = None
+    channel_group_mode: str | None = None
+
+
+class LeagueConfigUpdate(BaseModel):
+    """Update per-league subscription config."""
+
+    channel_profile_ids: list[int | str] | None = None
+    channel_group_id: int | None = None
+    channel_group_mode: str | None = None
+
+
+class LeagueConfigListResponse(BaseModel):
+    """List of per-league subscription configs."""
+
+    configs: list[LeagueConfigResponse]
+    total: int
+
+
 # =============================================================================
 # SUBSCRIPTION ENDPOINTS
 # =============================================================================
@@ -246,3 +270,76 @@ def delete_subscription_template_endpoint(assignment_id: int):
             )
 
         delete_subscription_template(conn, assignment_id)
+
+
+# =============================================================================
+# SUBSCRIPTION LEAGUE CONFIG ENDPOINTS
+# =============================================================================
+
+
+@router.get(
+    "/league-configs",
+    response_model=LeagueConfigListResponse,
+)
+def list_league_configs():
+    """List all per-league subscription configs."""
+    from teamarr.database.subscription import get_league_configs
+
+    with get_db() as conn:
+        configs = get_league_configs(conn)
+
+    return LeagueConfigListResponse(
+        configs=[
+            LeagueConfigResponse(
+                league_code=c.league_code,
+                channel_profile_ids=c.channel_profile_ids,
+                channel_group_id=c.channel_group_id,
+                channel_group_mode=c.channel_group_mode,
+            )
+            for c in configs
+        ],
+        total=len(configs),
+    )
+
+
+@router.put(
+    "/league-configs/{league_code}",
+    response_model=LeagueConfigResponse,
+)
+def upsert_league_config_endpoint(league_code: str, request: LeagueConfigUpdate):
+    """Create or update per-league subscription config."""
+    from teamarr.database.subscription import upsert_league_config
+
+    with get_db() as conn:
+        config = upsert_league_config(
+            conn,
+            league_code=league_code,
+            channel_profile_ids=request.channel_profile_ids,
+            channel_group_id=request.channel_group_id,
+            channel_group_mode=request.channel_group_mode,
+        )
+
+    return LeagueConfigResponse(
+        league_code=config.league_code,
+        channel_profile_ids=config.channel_profile_ids,
+        channel_group_id=config.channel_group_id,
+        channel_group_mode=config.channel_group_mode,
+    )
+
+
+@router.delete(
+    "/league-configs/{league_code}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_league_config_endpoint(league_code: str):
+    """Delete per-league subscription config."""
+    from teamarr.database.subscription import delete_league_config
+
+    with get_db() as conn:
+        deleted = delete_league_config(conn, league_code)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No config found for league '{league_code}'",
+        )

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { toast } from "sonner"
 import cronstrue from "cronstrue"
-import { getSportDisplayName } from "@/lib/utils"
+import { cn, getSportDisplayName } from "@/lib/utils"
 import {
   Loader2,
   Save,
@@ -23,6 +23,8 @@ import {
   Shield,
   ShieldOff,
   HardDrive,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react"
 import {
   ChannelProfileSelector,
@@ -62,6 +64,9 @@ import {
   useUpdateUpdateCheckSettings,
   useCheckForUpdates,
   useForceCheckForUpdates,
+  useLeagueConfigs,
+  useUpsertLeagueConfig,
+  useDeleteLeagueConfig,
 } from "@/hooks/useSettings"
 import { TeamPicker } from "@/components/TeamPicker"
 import { SortPriorityManager } from "@/components/SortPriorityManager"
@@ -91,6 +96,7 @@ import type {
   TeamFilterSettings,
   ChannelNumberingSettings,
   UpdateCheckSettings,
+  SubscriptionLeagueConfig,
 } from "@/api/settings"
 
 function formatRelativeTime(dateStr: string | null): string {
@@ -560,6 +566,253 @@ function BackupRestoreCard() {
   )
 }
 
+// Per-League Config Row Component
+function LeagueConfigRow({
+  leagueName,
+  sportName,
+  config,
+  isExpanded,
+  hasOverride,
+  channelProfiles,
+  channelGroups,
+  dispatcharrConnected,
+  onToggleExpand,
+  onSave,
+  onClear,
+}: {
+  leagueName: string
+  sportName: string
+  config: SubscriptionLeagueConfig | null
+  isExpanded: boolean
+  hasOverride: boolean
+  channelProfiles: { id: number; name: string }[]
+  channelGroups: { id: number; name: string }[]
+  dispatcharrConnected: boolean
+  onToggleExpand: () => void
+  onSave: (data: {
+    channel_profile_ids?: (number | string)[] | null
+    channel_group_id?: number | null
+    channel_group_mode?: string | null
+  }) => Promise<void>
+  onClear: () => Promise<void>
+}) {
+  const [localProfileIds, setLocalProfileIds] = useState<(number | string)[]>([])
+  const [localGroupId, setLocalGroupId] = useState<number | null>(null)
+  const [localGroupMode, setLocalGroupMode] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  // Sync local state when config changes or row expands
+  useEffect(() => {
+    if (isExpanded && config) {
+      setLocalProfileIds(
+        config.channel_profile_ids !== null && config.channel_profile_ids !== undefined
+          ? config.channel_profile_ids
+          : []
+      )
+      setLocalGroupId(config.channel_group_id)
+      setLocalGroupMode(config.channel_group_mode)
+    } else if (isExpanded && !config) {
+      setLocalProfileIds([])
+      setLocalGroupId(null)
+      setLocalGroupMode(null)
+    }
+  }, [isExpanded, config])
+
+  const profileSummary = (() => {
+    if (!config?.channel_profile_ids) return "Default"
+    if (config.channel_profile_ids.length === 0) return "None"
+    const names = config.channel_profile_ids.map((id) => {
+      if (typeof id === "string") return id
+      const p = channelProfiles.find((cp) => cp.id === id)
+      return p?.name ?? `#${id}`
+    })
+    return names.length <= 2 ? names.join(", ") : `${names.length} profiles`
+  })()
+
+  const groupSummary = (() => {
+    if (!config?.channel_group_id) return "Default"
+    const g = channelGroups.find((cg) => cg.id === config.channel_group_id)
+    return g?.name ?? `#${config.channel_group_id}`
+  })()
+
+  const modeSummary = config?.channel_group_mode ?? "Default"
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await onSave({
+        channel_profile_ids: localProfileIds.length > 0 ? localProfileIds : null,
+        channel_group_id: localGroupId,
+        channel_group_mode: localGroupMode,
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <tr
+        className={cn(
+          "hover:bg-muted/30 cursor-pointer",
+          hasOverride && "bg-primary/5",
+          isExpanded && "bg-accent"
+        )}
+        onClick={onToggleExpand}
+      >
+        <td className="px-3 py-1.5">
+          {isExpanded ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          )}
+        </td>
+        <td className="px-3 py-1.5 text-muted-foreground">{sportName}</td>
+        <td className="px-3 py-1.5">{leagueName}</td>
+        <td className="px-3 py-1.5">
+          <span className={cn("text-xs", !hasOverride && "text-muted-foreground")}>
+            {profileSummary}
+          </span>
+        </td>
+        <td className="px-3 py-1.5">
+          <span className={cn("text-xs", !hasOverride && "text-muted-foreground")}>
+            {groupSummary}
+          </span>
+        </td>
+        <td className="px-3 py-1.5">
+          <span className={cn("text-xs", !hasOverride && "text-muted-foreground")}>
+            {modeSummary}
+          </span>
+        </td>
+        <td className="px-3 py-1.5 text-right">
+          {hasOverride && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={(e) => {
+                e.stopPropagation()
+                onClear()
+              }}
+              title="Clear override"
+            >
+              <X className="h-3 w-3 text-muted-foreground" />
+            </Button>
+          )}
+        </td>
+      </tr>
+      {isExpanded && (
+        <tr>
+          <td colSpan={7} className="px-4 py-3 bg-muted/20 border-t-0">
+            <div className="space-y-4 max-w-2xl">
+              {/* Channel Profiles */}
+              <div>
+                <Label className="text-sm font-medium">Channel Profiles</Label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Override which channel profiles this league's channels are assigned to.
+                  Leave empty to inherit global default.
+                </p>
+                <ChannelProfileSelector
+                  selectedIds={localProfileIds}
+                  onChange={setLocalProfileIds}
+                  disabled={!dispatcharrConnected}
+                />
+              </div>
+
+              {/* Channel Group */}
+              <div>
+                <Label className="text-sm font-medium">Channel Group</Label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Override which Dispatcharr channel group this league's channels are placed in.
+                </p>
+                <Select
+                  value={localGroupId?.toString() ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setLocalGroupId(v ? parseInt(v) : null)
+                  }}
+                  disabled={!dispatcharrConnected}
+                  className="w-64"
+                >
+                  <option value="">Default (inherit)</option>
+                  {channelGroups.map((g) => (
+                    <option key={g.id} value={g.id.toString()}>
+                      {g.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              {/* Channel Group Mode */}
+              <div>
+                <Label className="text-sm font-medium">Channel Group Mode</Label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  How the channel group is determined: static (use selected group), or dynamic by sport/league name.
+                </p>
+                <Select
+                  value={localGroupMode ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setLocalGroupMode(v || null)
+                  }}
+                  className="w-64"
+                >
+                  <option value="">Default (inherit)</option>
+                  <option value="static">Static (use selected group)</option>
+                  <option value="sport">Dynamic by Sport</option>
+                  <option value="league">Dynamic by League</option>
+                </Select>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-1">
+                <Button
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleSave()
+                  }}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-1" />
+                  )}
+                  Save
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleExpand()
+                  }}
+                >
+                  Cancel
+                </Button>
+                {hasOverride && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onClear()
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Clear Override
+                  </Button>
+                )}
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
 type SettingsTab = "general" | "teams" | "events" | "channels" | "epg" | "integrations" | "advanced"
 
 const TABS: { id: SettingsTab; label: string }[] = [
@@ -618,6 +871,11 @@ export function Settings() {
   const { data: channelNumberingData } = useChannelNumberingSettings()
   const updateChannelNumbering = useUpdateChannelNumberingSettings()
 
+  // Per-league subscription config
+  const { data: leagueConfigsData } = useLeagueConfigs()
+  const upsertLeagueConfigMutation = useUpsertLeagueConfig()
+  const deleteLeagueConfigMutation = useDeleteLeagueConfig()
+
   // Update check settings
   const { data: updateCheckData } = useUpdateCheckSettings()
   const updateUpdateCheck = useUpdateUpdateCheckSettings()
@@ -675,6 +933,21 @@ export function Settings() {
 
   // Selected profile IDs for display (converted from API format)
   const [selectedProfileIds, setSelectedProfileIds] = useState<(number | string)[]>([])
+
+  // Per-league config expanded row state
+  const [expandedLeagueConfig, setExpandedLeagueConfig] = useState<string | null>(null)
+
+  // Dispatcharr channel groups for per-league config
+  const channelGroupsQuery = useQuery({
+    queryKey: ["dispatcharr-channel-groups"],
+    queryFn: async () => {
+      const response = await fetch("/api/v1/dispatcharr/channel-groups")
+      if (!response.ok) return []
+      return response.json() as Promise<{ id: number; name: string }[]>
+    },
+    enabled: dispatcharrStatus.data?.connected ?? false,
+    retry: false,
+  })
 
   const initializedRef = useRef(false)
 
@@ -1876,6 +2149,88 @@ export function Settings() {
               Channel numbers will be updated on the next EPG generation.
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Per-League Channel Config */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Per-League Channel Config</CardTitle>
+          <CardDescription>
+            Override channel profiles, channel group, and group mode per league. Leagues without overrides inherit global defaults.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-md max-h-96 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted sticky top-0 z-10">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium w-8"></th>
+                  <th className="px-3 py-2 text-left font-medium">Sport</th>
+                  <th className="px-3 py-2 text-left font-medium">League</th>
+                  <th className="px-3 py-2 text-left font-medium">Profiles</th>
+                  <th className="px-3 py-2 text-left font-medium">Channel Group</th>
+                  <th className="px-3 py-2 text-left font-medium">Group Mode</th>
+                  <th className="px-3 py-2 text-right font-medium w-16"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {(leaguesData?.leagues ?? [])
+                  .slice()
+                  .sort((a, b) => {
+                    const sportCmp = a.sport.localeCompare(b.sport)
+                    if (sportCmp !== 0) return sportCmp
+                    return a.name.localeCompare(b.name)
+                  })
+                  .map((league) => {
+                    const config = leagueConfigsData?.configs?.find(
+                      (c) => c.league_code === league.slug
+                    )
+                    const isExpanded = expandedLeagueConfig === league.slug
+                    const hasOverride = !!config
+                    return (
+                      <LeagueConfigRow
+                        key={league.slug}
+                        leagueName={league.name}
+                        sportName={getSportDisplayName(league.sport, sportsMap)}
+                        config={config ?? null}
+                        isExpanded={isExpanded}
+                        hasOverride={hasOverride}
+                        channelProfiles={channelProfilesQuery.data ?? []}
+                        channelGroups={channelGroupsQuery.data ?? []}
+                        dispatcharrConnected={dispatcharrStatus.data?.connected ?? false}
+                        onToggleExpand={() =>
+                          setExpandedLeagueConfig(isExpanded ? null : league.slug)
+                        }
+                        onSave={async (data) => {
+                          try {
+                            await upsertLeagueConfigMutation.mutateAsync({
+                              leagueCode: league.slug,
+                              data,
+                            })
+                            toast.success(`Saved config for ${league.name}`)
+                            setExpandedLeagueConfig(null)
+                          } catch {
+                            toast.error(`Failed to save config for ${league.name}`)
+                          }
+                        }}
+                        onClear={async () => {
+                          try {
+                            await deleteLeagueConfigMutation.mutateAsync(league.slug)
+                            toast.success(`Cleared config for ${league.name}`)
+                          } catch {
+                            toast.error(`Failed to clear config for ${league.name}`)
+                          }
+                        }}
+                      />
+                    )
+                  })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Click a league row to expand and configure overrides. Changes apply on the next EPG generation.
+          </p>
         </CardContent>
       </Card>
 
