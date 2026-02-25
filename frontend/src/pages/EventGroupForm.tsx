@@ -240,9 +240,6 @@ export function EventGroupForm() {
           if (shouldClear(group.channel_group_id, formData.channel_group_id)) {
             updateData.clear_channel_group_id = true
           }
-          if (shouldClear(group.channel_start_number, formData.channel_start_number)) {
-            updateData.clear_channel_start_number = true
-          }
           if (shouldClear(group.display_name, formData.display_name)) {
             updateData.clear_display_name = true
           }
