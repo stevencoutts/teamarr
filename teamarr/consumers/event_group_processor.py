@@ -1335,14 +1335,16 @@ class EventGroupProcessor:
 
         sport_durations = self._load_sport_durations_cached()
 
-        # Search all known leagues (broad match), include only subscribed
+        # Search all known leagues (broad match), include only subscribed.
         # This preserves legacy multi-league behavior: streams are matched
         # against all events (catches team-name-only streams), then filtered
         # to only include events from subscribed leagues.
+        # Union league_cache with subscription to guarantee subscribed leagues
+        # are always searched even if cache hasn't been refreshed yet.
         include_leagues = (
             resolved_leagues if resolved_leagues else group.leagues
         )
-        search_leagues = self._get_all_known_leagues()
+        search_leagues = list(set(self._get_all_known_leagues()) | set(include_leagues))
 
         matcher = StreamMatcher(
             service=self._service,
