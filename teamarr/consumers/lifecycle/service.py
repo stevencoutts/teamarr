@@ -2486,7 +2486,6 @@ class ChannelLifecycleService:
                 teamarr_channels = [
                     c for c in all_dispatcharr
                     if (c.tvg_id or "").startswith("teamarr-event-")
-                    or c.tvg_id == "GoldZone.us"
                 ]
 
                 if not teamarr_channels:

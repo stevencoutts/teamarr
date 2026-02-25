@@ -12,8 +12,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from teamarr.consumers.gold_zone import GoldZoneResult, process_gold_zone
-
 logger = logging.getLogger(__name__)
 
 # Global lock to prevent concurrent EPG generation runs
@@ -125,7 +123,6 @@ def run_full_generation(
         get_dispatcharr_settings,
         get_display_settings,
         get_epg_settings,
-        get_gold_zone_settings,
     )
     from teamarr.database.stats import create_run
     from teamarr.dispatcharr import EPGManager
@@ -214,7 +211,6 @@ def run_full_generation(
             settings = get_epg_settings(conn)
             dispatcharr_settings = get_dispatcharr_settings(conn)
             display_settings = get_display_settings(conn)
-            gold_zone_settings = get_gold_zone_settings(conn)
 
         # Step 1: Refresh M3U accounts (0-5%)
         update_progress("init", 3, "Refreshing M3U accounts...")
@@ -321,15 +317,6 @@ def run_full_generation(
             db_factory, dispatcharr_client, update_progress
         )
 
-        # Step 3c: Gold Zone channel (if enabled)
-        gold_zone_result: GoldZoneResult | None = None
-        if gold_zone_settings.enabled and dispatcharr_client:
-            update_progress("gold_zone", 94, "Processing Gold Zone...")
-            gold_zone_result = process_gold_zone(
-                db_factory, dispatcharr_client, gold_zone_settings,
-                settings, update_progress,
-            )
-
         # Step 4: Merge and save XMLTV (95-96%)
         update_progress("saving", 95, "Saving XMLTV...")
 
@@ -339,19 +326,6 @@ def run_full_generation(
             xmltv_contents.extend(team_xmltv)
             group_xmltv = get_all_group_xmltv(conn)
             xmltv_contents.extend(group_xmltv)
-
-        # Inject Gold Zone external EPG if available
-        if gold_zone_result and gold_zone_result.epg_xml:
-            xmltv_contents.append(gold_zone_result.epg_xml)
-            logger.info(
-                "[GOLD_ZONE] Injected EPG into merge (%d bytes, channel_id=%s)",
-                len(gold_zone_result.epg_xml),
-                gold_zone_result.dispatcharr_channel_id,
-            )
-        elif gold_zone_result:
-            logger.warning("[GOLD_ZONE] Result present but no EPG XML")
-        elif gold_zone_settings.enabled:
-            logger.warning("[GOLD_ZONE] Enabled but no result returned")
 
         output_path = settings.epg_output_path
         if xmltv_contents and output_path:
