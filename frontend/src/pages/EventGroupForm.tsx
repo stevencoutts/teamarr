@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
@@ -65,19 +64,13 @@ export function EventGroupForm() {
     leagues: [],
     parent_group_id: null,
     template_id: null,
-    channel_start_number: null,
-    channel_assignment_mode: "auto",
     channel_group_mode: "static",  // Dynamic channel group assignment mode
-    duplicate_event_handling: "consolidate",
     sort_order: 0,
     total_stream_count: 0,
     m3u_group_id: m3uGroupId ? Number(m3uGroupId) : null,
     m3u_group_name: m3uGroupName || null,
     m3u_account_id: m3uAccountId ? Number(m3uAccountId) : null,
     m3u_account_name: m3uAccountName || null,
-    // Multi-sport enhancements (Phase 3)
-    channel_sort_order: "time",
-    overlap_handling: "add_stream",
     enabled: true,
     // Team filtering
     include_teams: null,
@@ -110,7 +103,6 @@ export function EventGroupForm() {
   // Collapsible section states
   const [basicSettingsExpanded, setBasicSettingsExpanded] = useState(false)
   const [streamTimezoneExpanded, setStreamTimezoneExpanded] = useState(false)
-  const [channelSettingsExpanded, setChannelSettingsExpanded] = useState(false)
   const [channelGroupExpanded, setChannelGroupExpanded] = useState(false)
   const [channelProfilesExpanded, setChannelProfilesExpanded] = useState(false)
   const [streamProfileExpanded, setStreamProfileExpanded] = useState(false)
@@ -169,14 +161,11 @@ export function EventGroupForm() {
         leagues: group.leagues,
         parent_group_id: group.parent_group_id,
         template_id: group.template_id,
-        channel_start_number: group.channel_start_number,
         channel_group_id: group.channel_group_id,
         channel_group_mode: group.channel_group_mode || "static",
         channel_profile_ids: group.channel_profile_ids,  // Keep null = "use default"
         stream_profile_id: group.stream_profile_id,  // Keep null = "use global default"
         stream_timezone: group.stream_timezone,  // Keep null = "auto-detect from stream"
-        duplicate_event_handling: group.duplicate_event_handling,
-        channel_assignment_mode: group.channel_assignment_mode,
         sort_order: group.sort_order,
         total_stream_count: group.total_stream_count,
         m3u_group_id: group.m3u_group_id,
@@ -207,9 +196,6 @@ export function EventGroupForm() {
         exclude_teams: group.exclude_teams,
         team_filter_mode: group.team_filter_mode || "include",
         bypass_filter_for_playoffs: group.bypass_filter_for_playoffs,
-        // Multi-sport enhancements (Phase 3)
-        channel_sort_order: group.channel_sort_order || "time",
-        overlap_handling: group.overlap_handling || "add_stream",
         enabled: group.enabled,
       })
 
@@ -968,147 +954,6 @@ export function EventGroupForm() {
               <p className="text-xs text-muted-foreground mt-2">
                 Optional. Timezone markers (e.g., "ET", "PT") are auto-detected. Set this only if your provider omits them and uses a different timezone than yours.
               </p>
-            </CardContent>}
-          </Card>
-
-          {/* Channel Settings */}
-          <Card>
-            <CardHeader
-              className="cursor-pointer hover:bg-muted/50 rounded-t-lg"
-              onClick={() => setChannelSettingsExpanded(!channelSettingsExpanded)}
-            >
-              <div className="flex items-center gap-2">
-                {channelSettingsExpanded ? (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                )}
-                <CardTitle>Channel Settings</CardTitle>
-              </div>
-            </CardHeader>
-            {channelSettingsExpanded && <CardContent className="space-y-4">
-              {/* Channel Assignment Mode - V1 style tile cards */}
-              <div className="space-y-2">
-                <Label>Channel Assignment Mode</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  {/* AUTO Card */}
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, channel_assignment_mode: "auto", channel_start_number: null })}
-                    className={cn(
-                      "flex flex-col items-start p-4 rounded-lg border-2 text-left transition-all",
-                      formData.channel_assignment_mode === "auto"
-                        ? "border-green-500 bg-green-500/10"
-                        : "border-border hover:border-muted-foreground/50"
-                    )}
-                  >
-                    <span className={cn(
-                      "font-semibold text-sm",
-                      formData.channel_assignment_mode === "auto" && "text-green-500"
-                    )}>
-                      AUTO
-                    </span>
-                    <span className="text-xs text-muted-foreground mt-1">
-                      Auto-assign from global range. Drag to set priority on Event Groups page.
-                    </span>
-                  </button>
-
-                  {/* MANUAL Card */}
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, channel_assignment_mode: "manual" })}
-                    className={cn(
-                      "flex flex-col items-start p-4 rounded-lg border-2 text-left transition-all",
-                      formData.channel_assignment_mode === "manual"
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-muted-foreground/50"
-                    )}
-                  >
-                    <span className={cn(
-                      "font-semibold text-sm",
-                      formData.channel_assignment_mode === "manual" && "text-primary"
-                    )}>
-                      MANUAL
-                    </span>
-                    <span className="text-xs text-muted-foreground mt-1">
-                      Specify a fixed channel start number below.
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Channel Start Number - only shown for manual */}
-              {formData.channel_assignment_mode === "manual" && (
-                <div className="space-y-2">
-                  <Label htmlFor="channel_start">Channel Start Number</Label>
-                  <Input
-                    id="channel_start"
-                    type="number"
-                    min={1}
-                    value={formData.channel_start_number || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        channel_start_number: e.target.value ? Number(e.target.value) : null,
-                      })
-                    }
-                    placeholder="Required for MANUAL mode"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    First channel number for created channels
-                  </p>
-                </div>
-              )}
-
-              {/* Duplicate Handling Section */}
-              <div className="space-y-4 pt-2 border-t">
-                <div className="space-y-1">
-                  <h4 className="font-medium text-sm">Duplicate Handling</h4>
-                  <p className="text-xs text-muted-foreground">
-                    How to handle when multiple streams match the same event
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="duplicate_handling">Within This Group</Label>
-                  <Select
-                    id="duplicate_handling"
-                    value={formData.duplicate_event_handling}
-                    onChange={(e) =>
-                      setFormData({ ...formData, duplicate_event_handling: e.target.value })
-                    }
-                  >
-                    <option value="consolidate">Consolidate (merge into one channel)</option>
-                    <option value="separate">Separate (one channel per stream)</option>
-                    <option value="ignore">Ignore (skip duplicates)</option>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    When multiple streams in this group match the same event
-                  </p>
-                </div>
-
-                {/* Only show for multi-league groups */}
-                {formData.leagues.length > 1 && (
-                  <div className="space-y-2">
-                    <Label htmlFor="overlap_handling">Across Other Groups</Label>
-                    <Select
-                      id="overlap_handling"
-                      value={formData.overlap_handling || "add_stream"}
-                      onChange={(e) =>
-                        setFormData({ ...formData, overlap_handling: e.target.value })
-                      }
-                    >
-                      <option value="add_stream">Add streams to other group's channel (if none, create)</option>
-                      <option value="add_only">Add streams only (don't create channel)</option>
-                      <option value="create_all">Keep separate (create own channel)</option>
-                      <option value="skip">Skip (don't add streams or channel)</option>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      When this group's streams match an event that another group already has
-                    </p>
-                  </div>
-                )}
-              </div>
             </CardContent>}
           </Card>
 

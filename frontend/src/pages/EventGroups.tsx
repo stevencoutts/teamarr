@@ -161,9 +161,9 @@ export function EventGroups() {
     )
   }
 
-  // Filter groups, separating AUTO and MANUAL
-  const { autoGroups, manualGroups, filteredGroups } = useMemo(() => {
-    if (!data?.groups) return { autoGroups: [], manualGroups: [], filteredGroups: [] }
+  // Filter and sort groups by priority
+  const { autoGroups, filteredGroups } = useMemo(() => {
+    if (!data?.groups) return { autoGroups: [], filteredGroups: [] }
 
     // Filter groups
     const filtered = data.groups.filter((group) => {
@@ -173,27 +173,21 @@ export function EventGroups() {
       return true
     })
 
-    // Separate AUTO and MANUAL groups, sort AUTO by sort_order
-    const auto = filtered
-      .filter((g) => g.channel_assignment_mode === "auto")
+    // Sort all groups by sort_order (drag-and-drop priority)
+    const sorted = filtered
+      .slice()
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    const manual = filtered.filter((g) => g.channel_assignment_mode !== "auto")
-
-    // Build flat list: AUTO groups first, then MANUAL groups
-    const flat: EventGroup[] = [...auto, ...manual]
 
     return {
-      autoGroups: auto,
-      manualGroups: manual,
-      filteredGroups: flat,
+      autoGroups: sorted,
+      filteredGroups: sorted,
     }
   }, [data?.groups, nameFilter, statusFilter])
 
-  // Apply sorting to MANUAL groups only (AUTO groups use drag-and-drop order)
+  // Apply column sorting when a column header is clicked
   const sortedGroups = useMemo(() => {
     if (!sortColumn) return filteredGroups
 
-    // Sort function for groups
     const sortFn = (a: EventGroup, b: EventGroup) => {
       let cmp = 0
       switch (sortColumn) {
@@ -210,14 +204,8 @@ export function EventGroups() {
       return sortDirection === "asc" ? cmp : -cmp
     }
 
-    // Only sort MANUAL groups - AUTO groups keep their drag-and-drop order
-    const sortedManual = [...manualGroups].sort(sortFn)
-
-    // Rebuild flat list: AUTO groups first (unsorted), then sorted MANUAL groups
-    const result: EventGroup[] = [...autoGroups, ...sortedManual]
-
-    return result.length > 0 ? result : filteredGroups
-  }, [filteredGroups, autoGroups, manualGroups, sortColumn, sortDirection])
+    return [...filteredGroups].sort(sortFn)
+  }, [filteredGroups, sortColumn, sortDirection])
 
   // Calculate rich stats like V1
   const stats = useMemo(() => {
@@ -812,7 +800,6 @@ export function EventGroups() {
                       Name <SortIcon column="name" />
                     </div>
                   </TableHead>
-                  <TableHead className="text-center w-16">Ch Start</TableHead>
                   <TableHead className="text-center w-20">Ch Group</TableHead>
                   <TableHead
                     className="w-24 text-center cursor-pointer hover:bg-muted/50"
@@ -887,58 +874,24 @@ export function EventGroups() {
                   </TableRow>
                 ) : (
                   <>
-                {/* AUTO Section Header - V1 style */}
-                {autoGroups.length > 0 && (
-                  <TableRow className="bg-secondary/50 hover:bg-secondary/50 border-b-2 border-emerald-500/40">
-                    <TableCell colSpan={8} className="py-2 px-4">
-                      <span className="text-xs font-semibold text-emerald-500 uppercase tracking-wide">
-                        AUTO Channel Assignment
-                      </span>
-                      <span className="text-xs text-emerald-500/60 ml-2 italic">
-                        Drag to reorder priority
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {sortedGroups.map((group, index) => {
-                  const isAuto = group.channel_assignment_mode === "auto"
-
-                  // Insert MANUAL section header before first manual group
-                  const isFirstManual = !isAuto && !sortedGroups.slice(0, index).some(
-                    (g) => g.channel_assignment_mode !== "auto"
-                  )
-
+                {sortedGroups.map((group) => {
                   return (
                     <React.Fragment key={group.id}>
-                      {isFirstManual && manualGroups.length > 0 && (
-                        <TableRow className="bg-secondary/50 hover:bg-secondary/50 border-b-2 border-border">
-                          <TableCell colSpan={8} className="py-2 px-4">
-                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                              MANUAL Channel Assignment
-                            </span>
-                            <span className="text-xs text-muted-foreground/60 ml-2 italic">
-                              Fixed channel start numbers
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      )}
                       <TableRow
                         className={`
-                          ${isAuto ? "border-l-3 border-l-transparent hover:border-l-emerald-500 group/row" : ""}
+                          border-l-3 border-l-transparent hover:border-l-emerald-500 group/row
                           ${draggedGroupId === group.id ? "opacity-50" : ""}
                         `}
-                        draggable={isAuto}
-                        onDragStart={(e) => isAuto && handleDragStart(e, group.id)}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, group.id)}
                         onDragOver={handleDragOver}
-                        onDrop={(e) => isAuto && handleDrop(e, group.id)}
+                        onDrop={(e) => handleDrop(e, group.id)}
                         onDragEnd={handleDragEnd}
                       >
                         <TableCell className="w-8 p-0">
-                          {isAuto ? (
-                            <div className="flex items-center justify-center h-full cursor-grab active:cursor-grabbing text-muted-foreground group-hover/row:text-emerald-500">
-                              <GripVertical className="h-4 w-4" />
-                            </div>
-                          ) : null}
+                          <div className="flex items-center justify-center h-full cursor-grab active:cursor-grabbing text-muted-foreground group-hover/row:text-emerald-500">
+                            <GripVertical className="h-4 w-4" />
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Checkbox
@@ -949,16 +902,6 @@ export function EventGroups() {
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span>{getDisplayName(group)}</span>
-                            {/* AUTO badge */}
-                            {isAuto && (
-                              <Badge
-                                variant="secondary"
-                                className="bg-green-500/15 text-green-500 border-green-500/30 text-xs"
-                                title="Auto channel assignment"
-                              >
-                                AUTO
-                              </Badge>
-                            )}
                             {/* Account name badge */}
                             {group.m3u_account_name && (
                               <Badge
@@ -991,22 +934,6 @@ export function EventGroups() {
                             )}
                           </div>
                         </TableCell>
-                    {/* Ch Start Column */}
-                    <TableCell className="text-center">
-                      {isAuto ? (
-                        <Badge
-                          variant="secondary"
-                          className="bg-green-500/15 text-green-500 border-green-500/30 text-xs"
-                          title="Auto-assigned from global range"
-                        >
-                          AUTO
-                        </Badge>
-                      ) : group.channel_start_number ? (
-                        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{group.channel_start_number}</code>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
                     {/* Ch Group Column */}
                     <TableCell className="text-center">
                       {group.channel_group_mode && group.channel_group_mode !== "static" ? (

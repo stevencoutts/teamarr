@@ -11,77 +11,60 @@ from .models import (
 
 router = APIRouter()
 
-# Valid values for validation
-VALID_NUMBERING_MODES = {"strict_block", "rational_block", "strict_compact"}
-VALID_SORTING_SCOPES = {"per_group", "global"}
-VALID_SORT_BY = {"sport_league_time", "time", "stream_order"}
+VALID_CHANNEL_MODES = {"auto", "manual"}
+VALID_CONSOLIDATION_MODES = {"consolidate", "separate"}
 
 
 @router.get("/settings/channel-numbering", response_model=ChannelNumberingSettingsModel)
 def get_channel_numbering_settings():
-    """Get channel numbering and sorting settings."""
+    """Get channel numbering and consolidation settings."""
     from teamarr.database.settings import get_channel_numbering_settings
 
     with get_db() as conn:
         settings = get_channel_numbering_settings(conn)
 
     return ChannelNumberingSettingsModel(
-        numbering_mode=settings.numbering_mode,
-        sorting_scope=settings.sorting_scope,
-        sort_by=settings.sort_by,
+        global_channel_mode=settings.global_channel_mode,
+        league_channel_starts=settings.league_channel_starts,
+        global_consolidation_mode=settings.global_consolidation_mode,
     )
 
 
 @router.put("/settings/channel-numbering", response_model=ChannelNumberingSettingsModel)
 def update_channel_numbering_settings(update: ChannelNumberingSettingsUpdate):
-    """Update channel numbering and sorting settings.
-
-    Changes to numbering mode or sorting scope may trigger channel renumbering
-    on the next EPG generation.
-    """
+    """Update channel numbering and consolidation settings."""
     from teamarr.database.settings import (
         get_channel_numbering_settings,
         update_channel_numbering_settings,
     )
 
-    # Validate numbering_mode
-    if update.numbering_mode is not None:
-        if update.numbering_mode not in VALID_NUMBERING_MODES:
+    if update.global_channel_mode is not None:
+        if update.global_channel_mode not in VALID_CHANNEL_MODES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid numbering_mode. Valid: {VALID_NUMBERING_MODES}",
+                detail=f"Invalid global_channel_mode. Valid: {VALID_CHANNEL_MODES}",
             )
 
-    # Validate sorting_scope
-    if update.sorting_scope is not None:
-        if update.sorting_scope not in VALID_SORTING_SCOPES:
+    if update.global_consolidation_mode is not None:
+        if update.global_consolidation_mode not in VALID_CONSOLIDATION_MODES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid sorting_scope. Valid: {VALID_SORTING_SCOPES}",
-            )
-
-    # Validate sort_by
-    if update.sort_by is not None:
-        if update.sort_by not in VALID_SORT_BY:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid sort_by. Valid: {VALID_SORT_BY}",
+                detail=f"Invalid global_consolidation_mode. Valid: {VALID_CONSOLIDATION_MODES}",
             )
 
     with get_db() as conn:
         update_channel_numbering_settings(
             conn,
-            numbering_mode=update.numbering_mode,
-            sorting_scope=update.sorting_scope,
-            sort_by=update.sort_by,
+            global_channel_mode=update.global_channel_mode,
+            league_channel_starts=update.league_channel_starts,
+            global_consolidation_mode=update.global_consolidation_mode,
         )
 
-    # Return updated settings
     with get_db() as conn:
         settings = get_channel_numbering_settings(conn)
 
     return ChannelNumberingSettingsModel(
-        numbering_mode=settings.numbering_mode,
-        sorting_scope=settings.sorting_scope,
-        sort_by=settings.sort_by,
+        global_channel_mode=settings.global_channel_mode,
+        league_channel_starts=settings.league_channel_starts,
+        global_consolidation_mode=settings.global_consolidation_mode,
     )

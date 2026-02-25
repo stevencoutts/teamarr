@@ -359,21 +359,27 @@ class ChannelReconciler:
         """Detect multiple channels for the same event within a group.
 
         This can happen if:
-        - duplicate_event_handling changed from 'separate' to 'consolidate'
+        - consolidation mode changed from 'separate' to 'consolidate'
         - Bug in channel creation
         - Manual channel creation
         """
+        from teamarr.database.channel_numbers import (
+            get_global_consolidation_mode,
+        )
+
+        # In separate mode, duplicates per-event are expected
+        consolidation_mode = get_global_consolidation_mode(conn)
+        if consolidation_mode == "separate":
+            return []
+
         issues = []
 
-        # Find events with multiple channels (excluding 'separate' mode groups)
         query = """
             SELECT mc.event_id, mc.event_epg_group_id,
-                   eg.duplicate_event_handling,
                    COUNT(*) as channel_count,
                    GROUP_CONCAT(mc.id) as channel_ids,
                    GROUP_CONCAT(mc.channel_name) as channel_names
             FROM managed_channels mc
-            LEFT JOIN event_epg_groups eg ON mc.event_epg_group_id = eg.id
             WHERE mc.deleted_at IS NULL
               AND mc.event_id IS NOT NULL
         """
@@ -392,10 +398,6 @@ class ChannelReconciler:
         duplicates = [dict(row) for row in cursor.fetchall()]
 
         for dup in duplicates:
-            # Skip if group is in 'separate' mode (duplicates are expected)
-            if dup.get("duplicate_event_handling") == "separate":
-                continue
-
             issues.append(
                 ReconciliationIssue(
                     issue_type="duplicate",
@@ -405,17 +407,21 @@ class ChannelReconciler:
                         "group_id": dup.get("event_epg_group_id"),
                         "channel_count": dup["channel_count"],
                         "channel_ids": (
-                            dup.get("channel_ids", "").split(",") if dup.get("channel_ids") else []
+                            dup.get("channel_ids", "").split(",")
+                            if dup.get("channel_ids")
+                            else []
                         ),
                         "channel_names": (
                             dup.get("channel_names", "").split(",")
                             if dup.get("channel_names")
                             else []
                         ),
-                        "duplicate_mode": dup.get("duplicate_event_handling"),
+                        "consolidation_mode": consolidation_mode,
                     },
                     suggested_action="merge",
-                    auto_fixable=self._settings.get("auto_fix_duplicates", False),
+                    auto_fixable=self._settings.get(
+                        "auto_fix_duplicates", False
+                    ),
                 )
             )
 

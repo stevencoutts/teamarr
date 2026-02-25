@@ -932,6 +932,119 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 58 (sports subscription)")
         current_version = 58
 
+    # ==========================================================================
+    # v59: Channel Numbering & Consolidation Overhaul
+    # ==========================================================================
+    # Moves channel numbering, consolidation, and ordering from per-group to
+    # global settings. Groups become pure stream suppliers.
+    #
+    # Steps:
+    # 1. Add new columns: global_channel_mode, league_channel_starts,
+    #    global_consolidation_mode
+    # 2. Migrate: if ANY enabled group is manual → global_channel_mode='manual'
+    # 3. Build league_channel_starts JSON from manual groups
+    # 4. Set global_consolidation_mode from default_duplicate_event_handling
+    # 5. Force channel_sorting_scope='global', channel_sort_by='sport_league_time'
+    if current_version < 59:
+        # 1. Add new columns
+        _add_column_if_not_exists(
+            conn, "settings", "global_channel_mode",
+            "TEXT DEFAULT 'auto' CHECK(global_channel_mode IN ('auto', 'manual'))"
+        )
+        _add_column_if_not_exists(
+            conn, "settings", "league_channel_starts", "JSON DEFAULT '{}'"
+        )
+        _add_column_if_not_exists(
+            conn, "settings", "global_consolidation_mode",
+            "TEXT DEFAULT 'consolidate'"  # CHECK added in schema.sql
+        )
+
+        # 2. Determine global channel mode from existing groups
+        has_manual = 0
+        try:
+            has_manual = conn.execute(
+                """SELECT COUNT(*) FROM event_epg_groups
+                   WHERE channel_assignment_mode = 'manual' AND enabled = 1"""
+            ).fetchone()[0]
+        except sqlite3.OperationalError:
+            pass  # Column may not exist in fresh databases
+
+        global_mode = "manual" if has_manual > 0 else "auto"
+        conn.execute(
+            "UPDATE settings SET global_channel_mode = ? WHERE id = 1",
+            (global_mode,),
+        )
+        logger.info(
+            "[MIGRATE v59] Global channel mode set to '%s' (%d manual groups)",
+            global_mode, has_manual,
+        )
+
+        # 3. Build league_channel_starts from manual groups
+        league_starts: dict[str, int] = {}
+        if has_manual > 0:
+            try:
+                cursor = conn.execute(
+                    """SELECT leagues, channel_start_number
+                       FROM event_epg_groups
+                       WHERE channel_assignment_mode = 'manual'
+                         AND channel_start_number IS NOT NULL
+                         AND enabled = 1"""
+                )
+                for row in cursor.fetchall():
+                    try:
+                        group_leagues = json.loads(row[0])
+                        start_num = row[1]
+                        if isinstance(group_leagues, list) and start_num:
+                            for lc in group_leagues:
+                                existing = league_starts.get(lc)
+                                if existing is None or start_num < existing:
+                                    league_starts[lc] = start_num
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+            except sqlite3.OperationalError:
+                pass
+
+            if league_starts:
+                conn.execute(
+                    "UPDATE settings SET league_channel_starts = ? WHERE id = 1",
+                    (json.dumps(league_starts),),
+                )
+                logger.info(
+                    "[MIGRATE v59] Built league_channel_starts: %d leagues",
+                    len(league_starts),
+                )
+
+        # 4. Set global_consolidation_mode from default_duplicate_event_handling
+        try:
+            row = conn.execute(
+                "SELECT default_duplicate_event_handling FROM settings WHERE id = 1"
+            ).fetchone()
+            if row and row[0]:
+                mode = row[0] if row[0] in ("consolidate", "separate") else "consolidate"
+                conn.execute(
+                    "UPDATE settings SET global_consolidation_mode = ? WHERE id = 1",
+                    (mode,),
+                )
+                logger.info("[MIGRATE v59] Consolidation mode set to '%s'", mode)
+        except sqlite3.OperationalError:
+            pass  # Column may not exist in fresh databases
+
+        # 5. Force global sorting with sport_league_time
+        try:
+            conn.execute(
+                """UPDATE settings SET
+                    channel_sorting_scope = 'global',
+                    channel_sort_by = 'sport_league_time'
+                   WHERE id = 1"""
+            )
+            logger.info("[MIGRATE v59] Locked sorting: scope=global, sort_by=sport_league_time")
+        except sqlite3.OperationalError:
+            pass  # Columns may not exist in fresh databases
+
+        conn.execute("UPDATE settings SET schema_version = 59 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 59 (channel numbering overhaul)")
+        current_version = 59
+
 
 # =============================================================================
 # LEGACY MIGRATION HELPER FUNCTIONS

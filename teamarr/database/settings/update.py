@@ -446,62 +446,45 @@ def update_team_filter_settings(
 
 def update_channel_numbering_settings(
     conn: Connection,
-    numbering_mode: str | None = None,
-    sorting_scope: str | None = None,
-    sort_by: str | None = None,
+    global_channel_mode: str | None = None,
+    league_channel_starts: dict | None = None,
+    global_consolidation_mode: str | None = None,
 ) -> bool:
-    """Update channel numbering and sorting settings.
+    """Update channel numbering and consolidation settings.
 
     Args:
         conn: Database connection
-        numbering_mode: Numbering mode ('strict_block', 'rational_block', 'strict_compact')
-        sorting_scope: Sorting scope ('per_group', 'global')
-        sort_by: Sort order ('sport_league_time', 'time', 'stream_order')
+        global_channel_mode: 'auto' or 'manual'
+        league_channel_starts: Dict mapping league_code → starting channel number
+        global_consolidation_mode: 'consolidate' or 'separate'
 
     Returns:
         True if updated
     """
+    import json as _json
+
     updates = []
     values = []
 
-    if numbering_mode is not None:
-        # Validate mode
-        valid_modes = ("strict_block", "rational_block", "strict_compact")
-        if numbering_mode not in valid_modes:
-            logger.warning(
-                "[CHANNEL_NUM] Invalid numbering mode '%s', must be one of %s",
-                numbering_mode,
-                valid_modes,
-            )
+    if global_channel_mode is not None:
+        if global_channel_mode not in ("auto", "manual"):
+            logger.warning("[CHANNEL_NUM] Invalid global_channel_mode '%s'", global_channel_mode)
             return False
-        updates.append("channel_numbering_mode = ?")
-        values.append(numbering_mode)
+        updates.append("global_channel_mode = ?")
+        values.append(global_channel_mode)
 
-    if sorting_scope is not None:
-        # Validate scope
-        valid_scopes = ("per_group", "global")
-        if sorting_scope not in valid_scopes:
-            logger.warning(
-                "[CHANNEL_NUM] Invalid sorting scope '%s', must be one of %s",
-                sorting_scope,
-                valid_scopes,
-            )
-            return False
-        updates.append("channel_sorting_scope = ?")
-        values.append(sorting_scope)
+    if league_channel_starts is not None:
+        updates.append("league_channel_starts = ?")
+        values.append(_json.dumps(league_channel_starts))
 
-    if sort_by is not None:
-        # Validate sort_by
-        valid_sort_by = ("sport_league_time", "time", "stream_order")
-        if sort_by not in valid_sort_by:
+    if global_consolidation_mode is not None:
+        if global_consolidation_mode not in ("consolidate", "separate"):
             logger.warning(
-                "[CHANNEL_NUM] Invalid sort_by '%s', must be one of %s",
-                sort_by,
-                valid_sort_by,
+                "[CHANNEL_NUM] Invalid global_consolidation_mode '%s'", global_consolidation_mode,
             )
             return False
-        updates.append("channel_sort_by = ?")
-        values.append(sort_by)
+        updates.append("global_consolidation_mode = ?")
+        values.append(global_consolidation_mode)
 
     if not updates:
         return False

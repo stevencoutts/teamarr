@@ -124,9 +124,9 @@ def get_settings():
             mode=settings.team_filter.mode,
         ),
         channel_numbering=ChannelNumberingSettingsModel(
-            numbering_mode=settings.channel_numbering.numbering_mode,
-            sorting_scope=settings.channel_numbering.sorting_scope,
-            sort_by=settings.channel_numbering.sort_by,
+            global_channel_mode=settings.channel_numbering.global_channel_mode,
+            league_channel_starts=settings.channel_numbering.league_channel_starts,
+            global_consolidation_mode=settings.channel_numbering.global_consolidation_mode,
         ),
         stream_ordering=StreamOrderingSettingsModel(
             rules=[

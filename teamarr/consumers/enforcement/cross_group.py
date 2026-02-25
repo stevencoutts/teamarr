@@ -131,13 +131,19 @@ class CrossGroupEnforcer:
                     logger.debug("[CROSS_GROUP] No groups to check")
                     return result
 
-                for group_id, group in check_groups.items():
-                    overlap_handling = getattr(
-                        group, "overlap_handling", "add_stream"
-                    )
+                # v59: Use global consolidation mode
+                from teamarr.database.channel_numbers import get_global_consolidation_mode
+                consolidation_mode = get_global_consolidation_mode(conn)
 
-                    if overlap_handling == "create_all":
-                        continue
+                # In separate mode, skip cross-group consolidation entirely
+                if consolidation_mode == "separate":
+                    logger.debug("[CROSS_GROUP] Separate mode — skipping consolidation")
+                    return result
+
+                # In consolidate mode, always merge (add_stream)
+                overlap_handling = "add_stream"
+
+                for group_id, _group in check_groups.items():
 
                     channels = get_managed_channels_for_group(
                         conn, group_id, include_deleted=False

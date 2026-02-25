@@ -462,7 +462,9 @@ class ChannelLifecycleService:
 
                 # Get group settings
                 group_id = group_config.get("id")
-                duplicate_mode = group_config.get("duplicate_event_handling", "consolidate")
+                # Global consolidation mode (v59) replaces per-group duplicate_event_handling
+                from teamarr.database.channel_numbers import get_global_consolidation_mode
+                duplicate_mode = get_global_consolidation_mode(conn)
 
                 # Channel group settings - now supports dynamic modes
                 static_channel_group_id = group_config.get("channel_group_id")
@@ -620,20 +622,18 @@ class ChannelLifecycleService:
                             )
                             continue
 
-                        # Cross-group overlap handling for multi-league groups
-                        # Multi-league groups are processed LAST, so single-league channels exist
-                        leagues = group_config.get("leagues", [])
-                        is_multi_league = len(leagues) > 1
-                        overlap_handling = group_config.get("overlap_handling", "add_stream")
+                        # Cross-group overlap: consolidate mode merges across groups
+                        # Global consolidation mode (v59) replaces per-group overlap_handling
+                        consolidation_mode = get_global_consolidation_mode(conn)
 
-                        if is_multi_league and overlap_handling != "create_all":
+                        if consolidation_mode == "consolidate":
                             cross_group_result = self._handle_cross_group_overlap(
                                 conn=conn,
                                 event=event,
                                 stream=stream,
                                 group_id=group_id,
                                 matched_keyword=matched_keyword,
-                                overlap_handling=overlap_handling,
+                                overlap_handling="add_stream",
                                 group_config=group_config,
                                 template=event_template,
                                 segment=segment,
@@ -643,8 +643,8 @@ class ChannelLifecycleService:
                                 # Stream was handled (added to existing or skipped)
                                 result.merge(cross_group_result)
                                 continue
-                            # cross_group_result is None means: no existing channel found
-                            # and not add_only mode, so fall through to create new channel
+                            # cross_group_result is None means: no existing channel found,
+                            # fall through to create new channel
 
                         # Resolve dynamic channel group and profiles for this event
                         event_sport = getattr(event, "sport", None)
@@ -1189,9 +1189,9 @@ class ChannelLifecycleService:
         # Generate channel name (segment resolved via {card_segment_display} template variable)
         channel_name = self._generate_channel_name(event, template, matched_keyword, segment)
 
-        # Get channel number - use group's start number if configured
-        group_start_number = group_config.get("channel_start_number")
-        channel_number = self._get_next_channel_number(conn, group_id, group_start_number)
+        # Get channel number using global mode (AUTO/MANUAL)
+        event_league = getattr(event, "league", None)
+        channel_number = self._get_next_channel_number(conn, event_league)
         if not channel_number:
             return ChannelCreationResult(
                 success=False,
@@ -1527,19 +1527,16 @@ class ChannelLifecycleService:
     def _get_next_channel_number(
         self,
         conn: Connection,
-        group_id: int,
-        group_start_number: int | None = None,
+        event_league: str | None = None,
     ) -> int | None:
-        """Get next available channel number for a group.
+        """Get next available channel number.
 
-        Uses the channel_numbers module for AUTO/MANUAL mode support
-        with range validation and 10-block intervals. Passes external
-        Dispatcharr channel numbers to avoid collisions (#146).
+        Uses global channel mode (AUTO/MANUAL) from settings.
+        Passes external Dispatcharr channel numbers to avoid collisions (#146).
 
         Args:
             conn: Database connection
-            group_id: Event EPG group ID
-            group_start_number: Starting channel number from group config (unused, read from DB)
+            event_league: League code for the event (used in MANUAL mode)
 
         Returns:
             Next available channel number as int, or None if range exhausted
@@ -1547,11 +1544,13 @@ class ChannelLifecycleService:
         from teamarr.database.channel_numbers import get_next_channel_number
 
         next_num = get_next_channel_number(
-            conn, group_id, auto_assign=True,
+            conn, league=event_league,
             external_occupied=self._external_occupied,
         )
         if next_num is None:
-            logger.warning("[LIFECYCLE] Could not allocate channel number for group %d", group_id)
+            logger.warning(
+                "[LIFECYCLE] Could not allocate channel (league=%s)", event_league,
+            )
             return None
         return next_num
 
@@ -2451,289 +2450,6 @@ class ChannelLifecycleService:
         if result.deleted:
             logger.info(
                 "[LIFECYCLE] Deleted %d channels with missing/changed streams", len(result.deleted)
-            )
-
-        return result
-
-    def reassign_group_channels(self, group_id: int) -> dict:
-        """Reassign ALL channels in a group to their correct range.
-
-        V1 Parity: Called during EPG generation when AUTO sort order changes
-        or MANUAL start changes. Compacts channels to fill gaps.
-
-        Args:
-            group_id: Event EPG group ID
-
-        Returns:
-            Dict with reassigned, already_correct, and errors
-        """
-        from teamarr.database.channel_numbers import get_group_channel_range
-        from teamarr.database.channels import (
-            get_managed_channels_for_group,
-            log_channel_history,
-            update_managed_channel,
-        )
-        from teamarr.database.groups import get_group
-
-        result = {
-            "reassigned": [],
-            "already_correct": [],
-            "errors": [],
-        }
-
-        try:
-            with self._db_factory() as conn:
-                group = get_group(conn, group_id)
-                if not group:
-                    result["errors"].append({"error": f"Group {group_id} not found"})
-                    return result
-
-                # Get expected range for this group
-                range_start, range_end = get_group_channel_range(conn, group_id)
-                if range_start is None:
-                    # No range configured - skip
-                    return result
-
-                # Get and sort active channels by current number
-                channels = get_managed_channels_for_group(conn, group_id)
-                if not channels:
-                    return result
-
-                # Sort by current channel number to maintain relative order
-                sorted_channels = sorted(
-                    channels,
-                    key=lambda c: int(float(c.channel_number)) if c.channel_number else 9999,
-                )
-
-                # Reassign to compact range, skipping external channels (#146)
-                ext_set = self._external_occupied or set()
-                next_number = range_start
-                while next_number in ext_set:
-                    next_number += 1
-                for channel in sorted_channels:
-                    current_number = (
-                        int(float(channel.channel_number)) if channel.channel_number else None
-                    )
-
-                    if current_number == next_number:
-                        # Already at correct position
-                        result["already_correct"].append(
-                            {
-                                "channel_id": channel.dispatcharr_channel_id,
-                                "channel_number": current_number,
-                            }
-                        )
-                        next_number += 1
-                        while next_number in ext_set:
-                            next_number += 1
-                        continue
-
-                    # Check for overflow
-                    if range_end and next_number > range_end:
-                        result["errors"].append(
-                            {
-                                "channel_id": channel.dispatcharr_channel_id,
-                                "channel_name": channel.channel_name,
-                                "error": f"Range exhausted (max {range_end})",
-                            }
-                        )
-                        continue
-
-                    # Update Dispatcharr (closed-loop: skip DB on failure)
-                    if self._channel_manager:
-                        with self._dispatcharr_lock:
-                            api_ok = self._safe_update_channel(
-                                channel.dispatcharr_channel_id,
-                                {"channel_number": next_number},
-                                "channel number realloc (event group)",
-                            )
-                        if not api_ok:
-                            next_number += 1
-                            while next_number in ext_set:
-                                next_number += 1
-                            continue
-
-                    # Update DB
-                    update_managed_channel(conn, channel.id, {"channel_number": next_number})
-
-                    # Log history
-                    log_channel_history(
-                        conn=conn,
-                        managed_channel_id=channel.id,
-                        change_type="modified",
-                        change_source="lifecycle",
-                        notes=f"Channel number: {current_number} → {next_number}",
-                    )
-
-                    result["reassigned"].append(
-                        {
-                            "channel_id": channel.dispatcharr_channel_id,
-                            "channel_name": channel.channel_name,
-                            "old_number": current_number,
-                            "new_number": next_number,
-                        }
-                    )
-
-                    next_number += 1
-                    while next_number in ext_set:
-                        next_number += 1
-
-        except Exception as e:
-            logger.exception(f"Error reassigning channels for group {group_id}")
-            result["errors"].append({"error": str(e)})
-
-        if result["reassigned"]:
-            logger.info(
-                "[LIFECYCLE] Reassigned %d channels in group %d",
-                len(result["reassigned"]),
-                group_id,
-            )
-
-        return result
-
-    def reassign_all_auto_groups(self) -> dict:
-        """Reassign ALL AUTO groups to their correct ranges.
-
-        V1 Parity: Called at the start of EPG generation to ensure
-        all AUTO groups have correct non-overlapping ranges based on
-        current channel counts and sort order.
-
-        This handles the case where:
-        - Group A (sort=1) expands and needs more channels
-        - Group B (sort=2) has channels in Group A's expanded range
-        - Group B's channels must move to make room
-
-        Returns:
-            Dict with total stats across all groups
-        """
-        from teamarr.database.channel_numbers import (
-            _calculate_blocks_needed,
-            _get_total_stream_count,
-            get_global_channel_range,
-        )
-        from teamarr.database.channels import (
-            get_managed_channels_for_group,
-            log_channel_history,
-            update_managed_channel,
-        )
-
-        result = {
-            "groups_processed": 0,
-            "channels_reassigned": 0,
-            "errors": [],
-        }
-
-        try:
-            with self._db_factory() as conn:
-                # Get global channel range
-                range_start, range_end = get_global_channel_range(conn)
-
-                # Get all AUTO groups sorted by sort_order
-                auto_groups = conn.execute(
-                    """SELECT id, name, sort_order
-                       FROM event_epg_groups
-                       WHERE channel_assignment_mode = 'auto'
-                         AND parent_group_id IS NULL
-                         AND enabled = 1
-                       ORDER BY sort_order ASC"""
-                ).fetchall()
-
-                if not auto_groups:
-                    return result
-
-                # Calculate ideal ranges for each group based on raw stream count
-                group_ranges = []
-                current_start = range_start
-                for grp in auto_groups:
-                    group_id = grp["id"]
-                    # Use total_stream_count (raw M3U) for range reservation
-                    total_streams = _get_total_stream_count(conn, group_id)
-                    blocks_needed = _calculate_blocks_needed(total_streams)
-                    group_end = current_start + (blocks_needed * 10) - 1
-
-                    group_ranges.append(
-                        {
-                            "id": group_id,
-                            "name": grp["name"],
-                            "ideal_start": current_start,
-                            "ideal_end": group_end,
-                            "stream_count": total_streams,
-                        }
-                    )
-
-                    current_start = group_end + 1
-
-                # Process each group and reassign channels if needed
-                # Skip external Dispatcharr channels during reassignment (#146)
-                ext_set = self._external_occupied or set()
-                for grp_range in group_ranges:
-                    group_id = grp_range["id"]
-                    ideal_start = grp_range["ideal_start"]
-
-                    # Get channels for this group sorted by current number
-                    channels = get_managed_channels_for_group(conn, group_id)
-                    if not channels:
-                        continue
-
-                    sorted_channels = sorted(
-                        channels,
-                        key=lambda c: int(float(c.channel_number)) if c.channel_number else 9999,
-                    )
-
-                    # Reassign to ideal range, skipping external channels
-                    next_number = ideal_start
-                    while next_number in ext_set:
-                        next_number += 1
-                    for channel in sorted_channels:
-                        current_num = (
-                            int(float(channel.channel_number)) if channel.channel_number else None
-                        )
-
-                        if current_num == next_number:
-                            next_number += 1
-                            while next_number in ext_set:
-                                next_number += 1
-                            continue
-
-                        # Need to reassign (closed-loop: skip DB on failure)
-                        if self._channel_manager:
-                            with self._dispatcharr_lock:
-                                api_ok = self._safe_update_channel(
-                                    channel.dispatcharr_channel_id,
-                                    {"channel_number": next_number},
-                                    "channel number realloc (recurring)",
-                                )
-                            if not api_ok:
-                                next_number += 1
-                                while next_number in ext_set:
-                                    next_number += 1
-                                continue
-
-                        update_managed_channel(conn, channel.id, {"channel_number": next_number})
-
-                        log_channel_history(
-                            conn=conn,
-                            managed_channel_id=channel.id,
-                            change_type="modified",
-                            change_source="lifecycle",
-                            notes=f"Channel number: {current_num} → {next_number}",
-                        )
-
-                        result["channels_reassigned"] += 1
-                        next_number += 1
-                        while next_number in ext_set:
-                            next_number += 1
-
-                    result["groups_processed"] += 1
-
-        except Exception as e:
-            logger.exception("Error in global AUTO group reassignment")
-            result["errors"].append({"error": str(e)})
-
-        if result["channels_reassigned"]:
-            logger.info(
-                f"Global reassignment: {result['channels_reassigned']} channels "
-                f"across {result['groups_processed']} groups"
             )
 
         return result

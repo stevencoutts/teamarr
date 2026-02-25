@@ -102,15 +102,15 @@ export interface TeamFilterSettingsUpdate {
 }
 
 export interface ChannelNumberingSettings {
-  numbering_mode: "strict_block" | "rational_block" | "strict_compact"
-  sorting_scope: "per_group" | "global"
-  sort_by: "sport_league_time" | "time" | "stream_order"
+  global_channel_mode: "auto" | "manual"
+  league_channel_starts: Record<string, number>
+  global_consolidation_mode: "consolidate" | "separate"
 }
 
 export interface ChannelNumberingSettingsUpdate {
-  numbering_mode?: "strict_block" | "rational_block" | "strict_compact"
-  sorting_scope?: "per_group" | "global"
-  sort_by?: "sport_league_time" | "time" | "stream_order"
+  global_channel_mode?: "auto" | "manual"
+  league_channel_starts?: Record<string, number>
+  global_consolidation_mode?: "consolidate" | "separate"
 }
 
 export interface StreamOrderingRule {

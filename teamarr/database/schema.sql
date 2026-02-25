@@ -318,8 +318,24 @@ CREATE TABLE IF NOT EXISTS settings (
     gold_zone_channel_profile_ids TEXT,    -- JSON array of profile IDs
     gold_zone_stream_profile_id INTEGER,
 
+    -- Global Channel Mode (replaces per-group channel_assignment_mode)
+    -- 'auto': Sequential numbering from channel_range_start by sort priority
+    -- 'manual': Per-league starting channel numbers from league_channel_starts
+    global_channel_mode TEXT DEFAULT 'auto'
+        CHECK(global_channel_mode IN ('auto', 'manual')),
+
+    -- Per-league channel start numbers for MANUAL mode
+    -- JSON: {"nfl": 1001, "nba": 2001, "nhl": 3001}
+    league_channel_starts JSON DEFAULT '{}',
+
+    -- Global stream consolidation (replaces per-group duplicate_event_handling + overlap_handling)
+    -- 'consolidate': Merge all streams for same event into one channel
+    -- 'separate': Each stream gets its own channel
+    global_consolidation_mode TEXT DEFAULT 'consolidate'
+        CHECK(global_consolidation_mode IN ('consolidate', 'separate')),
+
     -- Schema Version
-    schema_version INTEGER DEFAULT 58
+    schema_version INTEGER DEFAULT 59
 );
 
 -- Insert default settings

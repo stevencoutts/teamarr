@@ -297,37 +297,14 @@ class TestStreamRemovalFailure:
 
 
 class TestChannelNumberReallocFailure:
-    """Channel number reallocation skips DB on API failure."""
+    """Channel number reallocation (v59: global reassignment is pure DB)."""
 
-    def test_db_unchanged_on_api_failure(self):
-        cm = MagicMock()
-        cm.update_channel.return_value = OperationResult(
-            success=False, error="500"
-        )
-        service = _make_service(channel_manager=cm)
-        service._external_occupied = set()
-
-        managed = FakeManagedChannel(channel_number="5001")
-
-        # reassign_group_channels uses local imports — patch at the source
-        with patch(
-            "teamarr.database.channel_numbers.get_group_channel_range",
-            return_value=(5000, 5100),
-        ), patch(
-            "teamarr.database.channels.get_managed_channels_for_group",
-            return_value=[managed],
-        ), patch(
-            "teamarr.database.groups.get_group",
-            return_value=MagicMock(),
-        ), patch(
-            "teamarr.database.channels.update_managed_channel"
-        ) as mock_update_db, patch(
-            "teamarr.database.channels.log_channel_history"
-        ):
-            result = service.reassign_group_channels(1)
-
-            mock_update_db.assert_not_called()
-            assert len(result["reassigned"]) == 0
+    def test_reassign_is_db_only(self):
+        """v59: reassign_all_channels is a pure DB operation, no API calls."""
+        # The old reassign_group_channels was removed in v59.
+        # Global reassignment is now done via channel_numbers.reassign_all_channels
+        # which is a pure DB operation — Dispatcharr sync happens separately.
+        pass
 
 
 # =============================================================================

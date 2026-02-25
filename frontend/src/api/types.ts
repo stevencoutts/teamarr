@@ -81,9 +81,6 @@ export interface EventGroup {
   excluded_event_past: number
   excluded_before_window: number
   excluded_league_not_included: number
-  // Multi-sport enhancements (Phase 3)
-  channel_sort_order: string
-  overlap_handling: string
   enabled: boolean
   created_at: string | null
   updated_at: string | null
@@ -137,9 +134,6 @@ export interface EventGroupCreate {
   exclude_teams?: TeamFilterEntry[] | null
   team_filter_mode?: 'include' | 'exclude'
   bypass_filter_for_playoffs?: boolean | null  // null = use default
-  // Multi-sport enhancements (Phase 3)
-  channel_sort_order?: string
-  overlap_handling?: string
   enabled?: boolean
   // Template assignments for multi-league groups (created with the group)
   template_assignments?: Array<{
@@ -190,8 +184,6 @@ export interface BulkGroupUpdateRequest {
   channel_profile_ids?: (number | string)[] | null  // null = use global default, can include "{sport}", "{league}"
   stream_profile_id?: number | null  // Stream profile (overrides global default)
   stream_timezone?: string | null  // IANA timezone for interpreting stream dates
-  channel_sort_order?: string
-  overlap_handling?: string
   clear_template?: boolean
   clear_channel_group_id?: boolean
   clear_channel_profile_ids?: boolean

@@ -546,19 +546,19 @@ def _validate_channel_ranges(
     db_factory: Callable[[], Any],
     external_occupied: set[int],
 ) -> dict:
-    """Validate channel ranges against external Dispatcharr channels.
+    """Validate global channel range against external Dispatcharr channels.
 
-    Scans all event groups' channel ranges for overlap with external channels.
-    Returns conflict info for the generation result (#146).
+    Checks for overlap between the configured channel range and external
+    channels. Returns conflict info for the generation result (#146).
 
     Args:
         db_factory: Factory function returning database connection
         external_occupied: Channel numbers occupied by non-Teamarr channels
 
     Returns:
-        Dict with external channel stats and per-group warnings
+        Dict with external channel stats and range warnings
     """
-    from teamarr.database.channel_numbers import get_group_channel_range
+    from teamarr.database.channel_numbers import get_global_channel_range
 
     max_external = max(external_occupied) if external_occupied else 0
     conflicts: dict = {
@@ -568,44 +568,34 @@ def _validate_channel_ranges(
     }
 
     with db_factory() as conn:
-        groups = conn.execute(
-            """SELECT id, name, channel_assignment_mode, channel_start_number
-               FROM event_epg_groups
-               WHERE enabled = 1"""
-        ).fetchall()
+        range_start, range_end = get_global_channel_range(conn)
+        effective_end = range_end if range_end else range_start + 9999
+        global_range = set(range(range_start, effective_end + 1))
+        collisions = external_occupied & global_range
 
-        for group in groups:
-            range_start, range_end = get_group_channel_range(conn, group["id"])
-            if range_start is None:
-                continue
-
-            effective_end = range_end if range_end else range_start + 999
-            group_range = set(range(range_start, effective_end + 1))
-            collisions = external_occupied & group_range
-
-            if collisions:
-                available = len(group_range) - len(collisions)
-                warning = {
-                    "group_id": group["id"],
-                    "group_name": group["name"],
-                    "range": f"{range_start}-{effective_end}",
-                    "external_collisions": len(collisions),
-                    "available_slots": available,
-                }
-                conflicts["group_warnings"].append(warning)
-                logger.warning(
-                    "[CHANNEL_NUM] Group '%s' range %d-%d has %d external channel collisions "
-                    "(%d slots available)",
-                    group["name"],
-                    range_start,
-                    effective_end,
-                    len(collisions),
-                    available,
-                )
+        if collisions:
+            available = len(global_range) - len(collisions)
+            warning = {
+                "group_id": None,
+                "group_name": "Global Range",
+                "range": f"{range_start}-{effective_end}",
+                "external_collisions": len(collisions),
+                "available_slots": available,
+            }
+            conflicts["group_warnings"].append(warning)
+            logger.warning(
+                "[CHANNEL_NUM] Global range %d-%d has %d "
+                "external channel collisions (%d slots available)",
+                range_start,
+                effective_end,
+                len(collisions),
+                available,
+            )
 
     if not conflicts["group_warnings"]:
         logger.info(
-            "[CHANNEL_NUM] No channel range conflicts with %d external channels",
+            "[CHANNEL_NUM] No channel range conflicts "
+            "with %d external channels",
             len(external_occupied),
         )
 
@@ -618,19 +608,12 @@ def _sync_global_channels(
     update_progress: Callable,
     external_occupied: set[int] | None = None,
 ) -> None:
-    """Reassign channel numbers globally by sport/league priority if enabled."""
-    from teamarr.database.channel_numbers import reassign_channels_globally
-    from teamarr.database.settings import get_channel_numbering_settings
-
-    with db_factory() as conn:
-        channel_numbering = get_channel_numbering_settings(conn)
-
-    if channel_numbering.sorting_scope != "global":
-        return
+    """Reassign channel numbers globally by sort priority."""
+    from teamarr.database.channel_numbers import reassign_all_channels
 
     update_progress("groups", 94, "Reassigning channels globally by sport/league priority...")
     with db_factory() as conn:
-        global_result = reassign_channels_globally(conn, external_occupied=external_occupied)
+        global_result = reassign_all_channels(conn, external_occupied=external_occupied)
         if global_result["channels_moved"] == 0:
             return
 

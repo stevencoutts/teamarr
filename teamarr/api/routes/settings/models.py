@@ -244,19 +244,19 @@ class TeamFilterSettingsUpdate(BaseModel):
 
 
 class ChannelNumberingSettingsModel(BaseModel):
-    """Channel numbering and sorting settings for AUTO groups."""
+    """Global channel numbering and consolidation settings."""
 
-    numbering_mode: str = "strict_block"  # 'strict_block', 'rational_block', 'strict_compact'
-    sorting_scope: str = "per_group"  # 'per_group', 'global'
-    sort_by: str = "time"  # 'sport_league_time', 'time', 'stream_order'
+    global_channel_mode: str = "auto"  # 'auto', 'manual'
+    league_channel_starts: dict = {}  # {"nfl": 1001, "nba": 2001}
+    global_consolidation_mode: str = "consolidate"  # 'consolidate', 'separate'
 
 
 class ChannelNumberingSettingsUpdate(BaseModel):
     """Update model for channel numbering settings (all fields optional)."""
 
-    numbering_mode: str | None = None
-    sorting_scope: str | None = None
-    sort_by: str | None = None
+    global_channel_mode: str | None = None
+    league_channel_starts: dict | None = None
+    global_consolidation_mode: str | None = None
 
 
 # =============================================================================

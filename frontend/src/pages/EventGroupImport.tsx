@@ -107,8 +107,6 @@ export function EventGroupImport() {
   const [bulkChannelProfileIds, setBulkChannelProfileIds] = useState<(number | string)[]>([])
   const [bulkStreamProfileId, setBulkStreamProfileId] = useState<number | null>(null)
   const [bulkStreamTimezone, setBulkStreamTimezone] = useState<string | null>(null)
-  const [bulkChannelSortOrder, setBulkChannelSortOrder] = useState<string>("time")
-  const [bulkOverlapHandling, setBulkOverlapHandling] = useState<string>("add_stream")
   const [bulkEnabled, setBulkEnabled] = useState(true)
   const [bulkImporting, setBulkImporting] = useState(false)
 
@@ -248,8 +246,6 @@ export function EventGroupImport() {
           channel_profile_ids: bulkChannelProfileIds.length > 0 ? bulkChannelProfileIds : null,
           stream_profile_id: bulkStreamProfileId,
           stream_timezone: bulkStreamTimezone,
-          channel_sort_order: bulkChannelSortOrder,
-          overlap_handling: bulkOverlapHandling,
           enabled: bulkEnabled,
         },
       })
@@ -279,8 +275,6 @@ export function EventGroupImport() {
     setBulkChannelGroupMode('static')
     setBulkChannelProfileIds([])
     setBulkStreamTimezone(null)
-    setBulkChannelSortOrder("time")
-    setBulkOverlapHandling("add_stream")
     setBulkEnabled(true)
     setShowBulkModal(true)
   }
@@ -728,29 +722,6 @@ export function EventGroupImport() {
                     value={bulkStreamTimezone}
                     onChange={setBulkStreamTimezone}
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Channel Sort Order</Label>
-                  <Select
-                    value={bulkChannelSortOrder}
-                    onChange={(e) => setBulkChannelSortOrder(e.target.value)}
-                  >
-                    <option value="time">Time</option>
-                    <option value="sport_time">Sport → Time</option>
-                    <option value="league_time">League → Time</option>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Overlap Handling</Label>
-                  <Select
-                    value={bulkOverlapHandling}
-                    onChange={(e) => setBulkOverlapHandling(e.target.value)}
-                  >
-                    <option value="add_stream">Add stream to existing channel</option>
-                    <option value="add_only">Add only (skip if no existing)</option>
-                    <option value="create_all">Create all (ignore overlap)</option>
-                    <option value="skip">Skip overlapping events</option>
-                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Enabled</Label>

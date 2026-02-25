@@ -171,11 +171,7 @@ def get_all_settings(conn: Connection) -> AllSettings:
             and row["default_bypass_filter_for_playoffs"] is not None
             else False,
         ),
-        channel_numbering=ChannelNumberingSettings(
-            numbering_mode=row["channel_numbering_mode"] or "strict_block",
-            sorting_scope=row["channel_sorting_scope"] or "per_group",
-            sort_by=row["channel_sort_by"] or "time",
-        ),
+        channel_numbering=_build_channel_numbering_settings(row),
         stream_ordering=StreamOrderingSettings(
             rules=_parse_stream_ordering_rules(row["stream_ordering_rules"])
         ),
@@ -425,17 +421,35 @@ def get_team_filter_settings(conn: Connection) -> TeamFilterSettings:
     )
 
 
+def _build_channel_numbering_settings(row) -> ChannelNumberingSettings:
+    """Build ChannelNumberingSettings from DB row."""
+    league_starts = {}
+    if row["league_channel_starts"]:
+        try:
+            parsed = json.loads(row["league_channel_starts"])
+            if isinstance(parsed, dict):
+                league_starts = {k: int(v) for k, v in parsed.items()}
+        except (ValueError, TypeError, json.JSONDecodeError):
+            pass
+
+    return ChannelNumberingSettings(
+        global_channel_mode=row["global_channel_mode"] or "auto",
+        league_channel_starts=league_starts,
+        global_consolidation_mode=row["global_consolidation_mode"] or "consolidate",
+    )
+
+
 def get_channel_numbering_settings(conn: Connection) -> ChannelNumberingSettings:
-    """Get channel numbering and sorting settings.
+    """Get channel numbering and consolidation settings.
 
     Args:
         conn: Database connection
 
     Returns:
-        ChannelNumberingSettings object with numbering mode, sorting scope, and sort by
+        ChannelNumberingSettings with global channel mode, league starts, consolidation
     """
     cursor = conn.execute(
-        """SELECT channel_numbering_mode, channel_sorting_scope, channel_sort_by
+        """SELECT global_channel_mode, league_channel_starts, global_consolidation_mode
            FROM settings WHERE id = 1"""
     )
     row = cursor.fetchone()
@@ -443,11 +457,7 @@ def get_channel_numbering_settings(conn: Connection) -> ChannelNumberingSettings
     if not row:
         return ChannelNumberingSettings()
 
-    return ChannelNumberingSettings(
-        numbering_mode=row["channel_numbering_mode"] or "strict_block",
-        sorting_scope=row["channel_sorting_scope"] or "per_group",
-        sort_by=row["channel_sort_by"] or "time",
-    )
+    return _build_channel_numbering_settings(row)
 
 
 def _parse_stream_ordering_rules(rules_json: str | None) -> list[StreamOrderingRule]:

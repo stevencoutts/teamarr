@@ -677,12 +677,8 @@ def create_group(request: GroupCreate):
         get_group_by_name,
     )
 
-    validate_group_fields(
-        duplicate_event_handling=request.duplicate_event_handling,
-        channel_assignment_mode=request.channel_assignment_mode,
-        channel_sort_order=request.channel_sort_order,
-        overlap_handling=request.overlap_handling,
-    )
+    # Deprecated per-group channel fields accepted but ignored (v59)
+    # validate_group_fields skipped for deprecated fields
 
     with get_db() as conn:
         # Check for duplicate name within same M3U account
@@ -705,14 +701,14 @@ def create_group(request: GroupCreate):
             group_mode="multi",  # Hardcoded — hierarchy removed in v58
             parent_group_id=None,  # Hardcoded — hierarchy removed in v58
             template_id=request.template_id,
-            channel_start_number=request.channel_start_number,
+            channel_start_number=None,  # Deprecated — global mode in v59
             channel_group_id=request.channel_group_id,
             channel_group_mode=request.channel_group_mode,
             channel_profile_ids=request.channel_profile_ids,
             stream_profile_id=request.stream_profile_id,
             stream_timezone=request.stream_timezone,
-            duplicate_event_handling=request.duplicate_event_handling,
-            channel_assignment_mode=request.channel_assignment_mode,
+            duplicate_event_handling="consolidate",  # Deprecated — global mode in v59
+            channel_assignment_mode="auto",  # Deprecated — global mode in v59
             sort_order=request.sort_order,
             total_stream_count=request.total_stream_count,
             m3u_group_id=request.m3u_group_id,
@@ -743,8 +739,8 @@ def create_group(request: GroupCreate):
             if request.exclude_teams is not None
             else None,
             team_filter_mode=request.team_filter_mode,
-            channel_sort_order=request.channel_sort_order,
-            overlap_handling=request.overlap_handling,
+            channel_sort_order="time",  # Deprecated — global ordering in v59
+            overlap_handling="add_stream",  # Deprecated — global consolidation in v59
             enabled=request.enabled,
         )
 
@@ -1196,12 +1192,7 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
         update_group,
     )
 
-    validate_group_fields(
-        duplicate_event_handling=request.duplicate_event_handling,
-        channel_assignment_mode=request.channel_assignment_mode,
-        channel_sort_order=request.channel_sort_order,
-        overlap_handling=request.overlap_handling,
-    )
+    # Deprecated per-group channel fields accepted but ignored (v59)
 
     with get_db() as conn:
         group = get_group(conn, group_id)
@@ -1249,8 +1240,8 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
                 channel_profile_ids=request.channel_profile_ids,
                 stream_profile_id=request.stream_profile_id,
                 stream_timezone=request.stream_timezone,
-                duplicate_event_handling=request.duplicate_event_handling,
-                channel_assignment_mode=request.channel_assignment_mode,
+                duplicate_event_handling=None,  # Deprecated — global consolidation in v59
+                channel_assignment_mode=None,  # Deprecated — global mode in v59
                 sort_order=request.sort_order,
                 total_stream_count=request.total_stream_count,
                 m3u_group_id=request.m3u_group_id,
@@ -1281,8 +1272,8 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
                 if request.exclude_teams is not None
                 else None,
                 team_filter_mode=request.team_filter_mode,
-                channel_sort_order=request.channel_sort_order,
-                overlap_handling=request.overlap_handling,
+                channel_sort_order=None,  # Deprecated — global ordering in v59
+                overlap_handling=None,  # Deprecated — global consolidation in v59
                 enabled=request.enabled,
                 clear_display_name=request.clear_display_name,
                 clear_parent_group_id=request.clear_parent_group_id,

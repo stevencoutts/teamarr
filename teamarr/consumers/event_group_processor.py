@@ -1788,20 +1788,16 @@ class EventGroupProcessor:
     def _sort_matched_streams(
         self,
         matched_streams: list[dict],
-        sort_order: str,
+        sort_order: str = "sport_league_time",
     ) -> list[dict]:
-        """Sort matched streams based on global sort_by setting.
+        """Sort matched streams by sport → league → time → event_id.
 
-        Sort orders:
-        - 'time': Sort by event start time (default)
-        - 'sport_league_time': Sort by sport, then league, then start time
-        - 'stream_order': Keep original stream order (no sorting)
-        - 'sport_time': Legacy - sort by sport, then start time
-        - 'league_time': Legacy - sort by league, then start time
+        Fixed sort order in v59 — always sport_league_time.
+        The sort_order parameter is kept for API compatibility but ignored.
 
         Args:
             matched_streams: List of {'stream': ..., 'event': ...} dicts
-            sort_order: One of 'time', 'sport_league_time', 'stream_order'
+            sort_order: Ignored (always sport_league_time)
 
         Returns:
             Sorted list of matched streams
@@ -1809,55 +1805,21 @@ class EventGroupProcessor:
         if not matched_streams:
             return matched_streams
 
-        # stream_order = keep original order, no sorting
-        if sort_order == "stream_order":
-            return matched_streams
-
-        # Default fallback values for missing data
         max_time = datetime.max.replace(tzinfo=None)
 
-        def get_start_time(m: dict) -> datetime:
-            """Get event start time, handling timezone-aware datetimes."""
+        def sort_key(m: dict):
             event = m.get("event")
             if not event:
-                return max_time
+                return ("zzz", "zzz", max_time, "")
+            sport = event.sport.lower() if event.sport else "zzz"
+            league = event.league.lower() if event.league else "zzz"
             start = event.start_time
-            # Make timezone-naive for comparison
             if start and start.tzinfo:
-                return start.replace(tzinfo=None)
-            return start or max_time
+                start = start.replace(tzinfo=None)
+            event_id = str(getattr(event, "id", ""))
+            return (sport, league, start or max_time, event_id)
 
-        if sort_order == "sport_league_time":
-            # Sort by sport, then league, then by start time
-            def sort_key(m: dict):
-                event = m.get("event")
-                sport = event.sport.lower() if event and event.sport else "zzz"
-                league = event.league.lower() if event and event.league else "zzz"
-                return (sport, league, get_start_time(m))
-
-            return sorted(matched_streams, key=sort_key)
-
-        elif sort_order == "sport_time":
-            # Legacy: Sort by sport (alphabetically), then by start time
-            def sort_key(m: dict):
-                event = m.get("event")
-                sport = event.sport.lower() if event and event.sport else "zzz"
-                return (sport, get_start_time(m))
-
-            return sorted(matched_streams, key=sort_key)
-
-        elif sort_order == "league_time":
-            # Legacy: Sort by league (alphabetically), then by start time
-            def sort_key(m: dict):
-                event = m.get("event")
-                league = event.league.lower() if event and event.league else "zzz"
-                return (league, get_start_time(m))
-
-            return sorted(matched_streams, key=sort_key)
-
-        else:
-            # Default: sort by time only
-            return sorted(matched_streams, key=get_start_time)
+        return sorted(matched_streams, key=sort_key)
 
     def _save_match_details(
         self,
@@ -2046,16 +2008,12 @@ class EventGroupProcessor:
         lifecycle_service.compute_external_occupied()
 
         # Build group config dict
+        # Per-group channel settings deprecated in v59 — using global settings
         group_config = {
             "id": group.id,
-            "duplicate_event_handling": group.duplicate_event_handling,
             "channel_group_id": group.channel_group_id,
             "channel_group_mode": group.channel_group_mode,  # "static", "sport", or "league"
             "channel_profile_ids": group.channel_profile_ids,
-            "channel_start_number": group.channel_start_number,
-            # For cross-group consolidation
-            "overlap_handling": group.overlap_handling,
-            "leagues": group.leagues,  # len > 1 means multi-league
             "m3u_account_id": group.m3u_account_id,
             "m3u_account_name": group.m3u_account_name,
             "stream_profile_id": group.stream_profile_id,
@@ -2070,18 +2028,21 @@ class EventGroupProcessor:
 
         combined_result = StreamProcessResult()
 
-        # V1 Parity Step 0: Global AUTO range reassignment
-        # This ensures all AUTO groups have correct non-overlapping ranges
-        # Must happen BEFORE creating new channels to avoid range conflicts
+        # v59: Global channel reassignment before processing
+        # Ensures all channels have correct numbers based on global mode
         try:
-            reassign_result = lifecycle_service.reassign_all_auto_groups()
-            if reassign_result.get("channels_reassigned"):
-                logger.info(
-                    f"Global reassignment: moved {reassign_result['channels_reassigned']} "
-                    f"channels across {reassign_result['groups_processed']} groups"
+            from teamarr.database.channel_numbers import reassign_all_channels
+            with lifecycle_service._db_factory() as conn:
+                reassign_result = reassign_all_channels(
+                    conn, external_occupied=lifecycle_service._external_occupied
                 )
+                if reassign_result.get("channels_moved"):
+                    logger.info(
+                        "[EVENT_EPG] Pre-process reassignment: %d channels moved",
+                        reassign_result["channels_moved"],
+                    )
         except Exception as e:
-            logger.debug("[EVENT_EPG] Error in global AUTO reassignment: %s", e)
+            logger.debug("[EVENT_EPG] Error in global reassignment: %s", e)
 
         # V1 Parity Step 1: Process scheduled deletions first
         try:
@@ -2111,13 +2072,17 @@ class EventGroupProcessor:
         )
         combined_result.merge(process_result)
 
-        # V1 Parity Step 5: Reassign channel numbers to compact range
+        # v59: Post-process global reassignment
         try:
-            reassign_result = lifecycle_service.reassign_group_channels(group.id)
-            if reassign_result.get("reassigned"):
-                logger.info(
-                    f"Reassigned {len(reassign_result['reassigned'])} channels in group {group.id}"
+            with lifecycle_service._db_factory() as conn:
+                reassign_result = reassign_all_channels(
+                    conn, external_occupied=lifecycle_service._external_occupied
                 )
+                if reassign_result.get("channels_moved"):
+                    logger.info(
+                        "[EVENT_EPG] Post-process reassignment: %d channels moved",
+                        reassign_result["channels_moved"],
+                    )
         except Exception as e:
             logger.debug("[EVENT_EPG] Error reassigning channel numbers: %s", e)
 

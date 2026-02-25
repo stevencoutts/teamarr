@@ -205,28 +205,23 @@ class BackupSettings:
 
 @dataclass
 class ChannelNumberingSettings:
-    """Channel numbering and sorting settings for AUTO groups.
+    """Global channel numbering and consolidation settings.
 
-    Controls how channel numbers are assigned and sorted across event groups.
+    Channel modes:
+    - auto: Sequential numbering from channel_range_start by sort priority
+    - manual: Per-league starting channel numbers from league_channel_starts
 
-    Numbering modes:
-    - strict_block: Reserve blocks by total_stream_count (current behavior, large gaps, minimal drift)
-    - rational_block: Reserve by actual channel count rounded to 10 (smaller gaps, low drift)
-    - strict_compact: No reservation, sequential numbers (no gaps, higher drift risk)
+    Consolidation modes:
+    - consolidate: Merge all streams for same event into one channel
+    - separate: Each stream gets its own channel
 
-    Sorting scopes (only for rational_block and strict_compact):
-    - per_group: Sort channels within each group
-    - global: Sort all AUTO channels across groups by sport/league/time
+    Sort order is always sport→league→time→event_id, controlled by
+    channel_sort_priorities table (drag-drop UI).
+    """
 
-    Sort by options (for per_group scope):
-    - sport_league_time: Sort by sport, then league, then event time
-    - time: Sort by event time only
-    - stream_order: Keep original stream order from M3U
-    """  # noqa: E501
-
-    numbering_mode: str = "strict_block"  # 'strict_block', 'rational_block', 'strict_compact'
-    sorting_scope: str = "per_group"  # 'per_group', 'global'
-    sort_by: str = "time"  # 'sport_league_time', 'time', 'stream_order'
+    global_channel_mode: str = "auto"  # 'auto', 'manual'
+    league_channel_starts: dict = field(default_factory=dict)  # {"nfl": 1001, ...}
+    global_consolidation_mode: str = "consolidate"  # 'consolidate', 'separate'
 
 
 @dataclass
