@@ -62,8 +62,6 @@ import {
   useUpdateUpdateCheckSettings,
   useCheckForUpdates,
   useForceCheckForUpdates,
-  useGoldZoneSettings,
-  useUpdateGoldZoneSettings,
 } from "@/hooks/useSettings"
 import { TeamPicker } from "@/components/TeamPicker"
 import { SortPriorityManager } from "@/components/SortPriorityManager"
@@ -562,7 +560,7 @@ function BackupRestoreCard() {
   )
 }
 
-type SettingsTab = "general" | "teams" | "events" | "channels" | "epg" | "integrations" | "advanced" | "special"
+type SettingsTab = "general" | "teams" | "events" | "channels" | "epg" | "integrations" | "advanced"
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "general", label: "General" },
@@ -572,7 +570,6 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: "channels", label: "Channels" },
   { id: "integrations", label: "Dispatcharr" },
   { id: "advanced", label: "System" },
-  { id: "special", label: "Special" },
 ]
 
 export function Settings() {
@@ -627,59 +624,6 @@ export function Settings() {
   const updateInfoQuery = useCheckForUpdates(updateCheckData?.enabled ?? true)
   const forceCheckUpdates = useForceCheckForUpdates()
   const { formatDateTime } = useDateFormat()
-
-  // Gold Zone settings
-  const { data: goldZoneData } = useGoldZoneSettings()
-  const updateGoldZone = useUpdateGoldZoneSettings()
-  const [goldZoneChannelDraft, setGoldZoneChannelDraft] = useState<string>("")
-  const [goldZoneProfileIds, setGoldZoneProfileIds] = useState<(number | string)[]>([])
-  const [goldZoneGroupDraft, setGoldZoneGroupDraft] = useState<string>("")
-  const [goldZoneStreamProfileDraft, setGoldZoneStreamProfileDraft] = useState<number | null>(null)
-  const channelGroupsQuery = useQuery({
-    queryKey: ["dispatcharr-channel-groups"],
-    queryFn: async () => {
-      const response = await fetch("/api/v1/dispatcharr/channel-groups?exclude_m3u=true")
-      if (!response.ok) return []
-      return response.json() as Promise<{ id: number; name: string }[]>
-    },
-    enabled: dispatcharrStatus.data?.connected ?? false,
-    retry: false,
-  })
-  useEffect(() => {
-    if (goldZoneData?.channel_number != null) {
-      setGoldZoneChannelDraft(String(goldZoneData.channel_number))
-    } else {
-      setGoldZoneChannelDraft("")
-    }
-  }, [goldZoneData?.channel_number])
-  useEffect(() => {
-    if (goldZoneData) {
-      setGoldZoneGroupDraft(goldZoneData.channel_group_id != null ? String(goldZoneData.channel_group_id) : "")
-      setGoldZoneStreamProfileDraft(goldZoneData.stream_profile_id ?? null)
-    }
-  }, [goldZoneData])
-  useEffect(() => {
-    if (channelProfilesQuery.data && goldZoneData) {
-      const allProfileIds = channelProfilesQuery.data.map(p => p.id)
-      setGoldZoneProfileIds(apiToProfileIds(goldZoneData.channel_profile_ids, allProfileIds))
-    }
-  }, [channelProfilesQuery.data, goldZoneData])
-
-  const handleSaveGoldZone = async () => {
-    try {
-      const allProfileIds = channelProfilesQuery.data?.map(p => p.id) ?? []
-      const apiIds = profileIdsToApi(goldZoneProfileIds, allProfileIds)
-      await updateGoldZone.mutateAsync({
-        channel_number: goldZoneChannelDraft ? parseInt(goldZoneChannelDraft) : null,
-        channel_group_id: goldZoneGroupDraft ? parseInt(goldZoneGroupDraft) : null,
-        channel_profile_ids: apiIds,
-        stream_profile_id: goldZoneStreamProfileDraft,
-      })
-      toast.success("Gold Zone settings saved")
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save")
-    }
-  }
 
   const { data: leaguesData } = useQuery({
     queryKey: ["cache", "leagues"],
@@ -2854,113 +2798,6 @@ export function Settings() {
       </>
       )}
 
-      {activeTab === "special" && (
-      <>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold">Special Features</h2>
-          <p className="text-sm text-muted-foreground">Limited-time and event-specific features</p>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <span className="text-xl">&#10052;&#65039;&#129351;</span>
-              Winter Olympics Gold Zone
-            </CardTitle>
-            <CardDescription>
-              Auto-match Gold Zone Olympics coverage into a single unified channel with EPG
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Switch
-                id="gold-zone-enabled"
-                checked={goldZoneData?.enabled ?? false}
-                onCheckedChange={(checked) => {
-                  updateGoldZone.mutate(
-                    { enabled: checked },
-                    {
-                      onSuccess: () => {
-                        toast.success(checked ? "Gold Zone enabled" : "Gold Zone disabled")
-                      },
-                    }
-                  )
-                }}
-              />
-              <Label htmlFor="gold-zone-enabled" className="cursor-pointer">
-                Enable Gold Zone
-              </Label>
-            </div>
-
-            {goldZoneData?.enabled && (
-              <div className="space-y-4 pl-1">
-                <div className="space-y-2">
-                  <Label htmlFor="gold-zone-channel">Channel Number</Label>
-                  <div className="flex items-center gap-2 max-w-xs">
-                    <Input
-                      id="gold-zone-channel"
-                      type="number"
-                      min={1}
-                      placeholder="999"
-                      value={goldZoneChannelDraft}
-                      onChange={(e) => setGoldZoneChannelDraft(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Channel Group</Label>
-                  <Select
-                    className="max-w-xs"
-                    value={goldZoneGroupDraft}
-                    onChange={(e) => setGoldZoneGroupDraft(e.target.value)}
-                  >
-                    <option value="">None (no group)</option>
-                    {channelGroupsQuery.data?.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Channel Profiles</Label>
-                  <ChannelProfileSelector
-                    selectedIds={goldZoneProfileIds}
-                    onChange={(ids) => setGoldZoneProfileIds(ids)}
-                    disabled={!dispatcharrStatus.data?.connected}
-                    showWildcards={false}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Stream Profile</Label>
-                  <StreamProfileSelector
-                    value={goldZoneStreamProfileDraft}
-                    onChange={(id) => setGoldZoneStreamProfileDraft(id)}
-                    disabled={!dispatcharrStatus.data?.connected}
-                    isGlobalDefault
-                  />
-                </div>
-
-                <p className="text-xs text-muted-foreground">
-                  All streams matching "Gold Zone" / "GoldZone" will be consolidated into a single channel.
-                  EPG data is fetched from an external source automatically during generation.
-                </p>
-
-                <Button onClick={handleSaveGoldZone} disabled={updateGoldZone.isPending}>
-                  {updateGoldZone.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4 mr-1" />
-                  )}
-                  Save
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </>
-      )}
 
       </div>
     </div>

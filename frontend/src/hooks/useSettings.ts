@@ -32,8 +32,6 @@ import {
   getUpdateCheckSettings,
   updateUpdateCheckSettings,
   checkForUpdates,
-  getGoldZoneSettings,
-  updateGoldZoneSettings,
 } from "@/api/settings"
 import type {
   DispatcharrSettings,
@@ -47,7 +45,6 @@ import type {
   ChannelNumberingSettingsUpdate,
   StreamOrderingSettingsUpdate,
   UpdateCheckSettingsUpdate,
-  GoldZoneSettingsUpdate,
 } from "@/api/settings"
 
 export function useSettings() {
@@ -357,21 +354,4 @@ export function useForceCheckForUpdates() {
   })
 }
 
-export function useGoldZoneSettings() {
-  return useQuery({
-    queryKey: ["settings", "gold-zone"],
-    queryFn: getGoldZoneSettings,
-  })
-}
-
-export function useUpdateGoldZoneSettings() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (data: GoldZoneSettingsUpdate) => updateGoldZoneSettings(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["settings"] })
-    },
-  })
-}
 
