@@ -106,8 +106,7 @@ export interface Template {
 
   // Usage counts (from list endpoint)
   team_count?: number
-  group_count?: number
-  global_count?: number
+  global_assignments?: Array<{ sports: string[] | null; leagues: string[] | null }>
 
   created_at: string
   updated_at: string

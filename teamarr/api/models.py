@@ -247,8 +247,7 @@ class TemplateResponse(BaseModel):
     updated_at: datetime
     # Usage counts from list query
     team_count: int | None = None
-    group_count: int | None = None
-    global_count: int | None = None
+    global_assignments: list[dict] | None = None
 
 
 class TemplateFullResponse(TemplateResponse):

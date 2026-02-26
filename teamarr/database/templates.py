@@ -229,7 +229,7 @@ def get_template_by_name(conn: Connection, name: str) -> Template | None:
 
 
 def list_templates_with_counts(conn: Connection) -> list[dict]:
-    """List all templates with team and group usage counts.
+    """List all templates with team usage counts and global assignment scopes.
 
     Returns raw dicts (not Template objects) for API response compatibility.
 
@@ -237,19 +237,39 @@ def list_templates_with_counts(conn: Connection) -> list[dict]:
         conn: Database connection
 
     Returns:
-        List of template dicts with team_count and group_count fields
+        List of template dicts with team_count and global_assignments fields
     """
     cursor = conn.execute(
         """
         SELECT t.*,
-               COALESCE((SELECT COUNT(*) FROM teams WHERE template_id = t.id), 0) as team_count,
-               COALESCE((SELECT COUNT(DISTINCT group_id) FROM group_templates WHERE template_id = t.id), 0) as group_count,
-               COALESCE((SELECT COUNT(*) FROM subscription_templates WHERE template_id = t.id), 0) as global_count
+               COALESCE((SELECT COUNT(*) FROM teams WHERE template_id = t.id), 0) as team_count
         FROM templates t
         ORDER BY t.name
-        """  # noqa: E501
+        """
     )
-    return [dict(row) for row in cursor.fetchall()]
+    templates = [dict(row) for row in cursor.fetchall()]
+
+    # Fetch global (subscription_templates) assignments per template
+    assign_cursor = conn.execute(
+        "SELECT template_id, sports, leagues FROM subscription_templates"
+    )
+    import json
+
+    assignments_by_template: dict[int, list[dict]] = {}
+    for row in assign_cursor.fetchall():
+        tid = row["template_id"]
+        sports_raw = row["sports"]
+        leagues_raw = row["leagues"]
+        sports = json.loads(sports_raw) if sports_raw else None
+        leagues = json.loads(leagues_raw) if leagues_raw else None
+        assignments_by_template.setdefault(tid, []).append(
+            {"sports": sports, "leagues": leagues}
+        )
+
+    for t in templates:
+        t["global_assignments"] = assignments_by_template.get(t["id"], [])
+
+    return templates
 
 
 def get_all_templates(conn: Connection, template_type: str | None = None) -> list[Template]:

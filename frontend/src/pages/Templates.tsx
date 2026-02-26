@@ -170,7 +170,7 @@ export function Templates() {
       const fullTemplate = await getTemplate(template.id)
 
       // Export without ID/timestamps (for portability)
-      const { id, created_at, updated_at, team_count, group_count, ...exportData } = fullTemplate
+      const { id, created_at, updated_at, team_count, global_assignments, ...exportData } = fullTemplate
       const blob = new Blob([JSON.stringify([exportData], null, 2)], { type: "application/json" })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
@@ -273,23 +273,24 @@ export function Templates() {
                           </Badge>
                         )
                       ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {template.global_count && template.global_count > 0 ? (
-                            <Badge variant="outline" className="text-xs">
-                              Global
-                            </Badge>
-                          ) : null}
-                          {template.group_count && template.group_count > 0 ? (
-                            <Badge variant="outline" className="text-xs">
-                              {template.group_count} group{template.group_count !== 1 ? "s" : ""}
-                            </Badge>
-                          ) : null}
-                          {!template.global_count && !template.group_count && (
-                            <Badge variant="outline" className="text-xs text-muted-foreground">
-                              None
-                            </Badge>
-                          )}
-                        </div>
+                        template.global_assignments && template.global_assignments.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {template.global_assignments.map((a, i) => {
+                              const parts: string[] = []
+                              if (a.leagues?.length) parts.push(a.leagues.join(", "))
+                              else if (a.sports?.length) parts.push(a.sports.join(", "))
+                              return (
+                                <Badge key={i} variant="outline" className="text-xs">
+                                  {parts.length > 0 ? parts[0] : "All events"}
+                                </Badge>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">
+                            None
+                          </Badge>
+                        )
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
@@ -365,14 +366,14 @@ export function Templates() {
           {/* Usage warning */}
           {deleteConfirm && (
             (deleteConfirm.template_type === "team" && deleteConfirm.team_count && deleteConfirm.team_count > 0) ||
-            (deleteConfirm.template_type === "event" && deleteConfirm.group_count && deleteConfirm.group_count > 0)
+            (deleteConfirm.template_type === "event" && deleteConfirm.global_assignments && deleteConfirm.global_assignments.length > 0)
           ) && (
             <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 text-sm">
               <p className="font-medium text-destructive">Warning</p>
               <p className="text-muted-foreground mt-1">
                 {deleteConfirm.template_type === "team"
                   ? `${deleteConfirm.team_count} team${deleteConfirm.team_count !== 1 ? "s are" : " is"} currently using this template. They will become unassigned and won't generate EPG data until you assign them a new template.`
-                  : `${deleteConfirm.group_count} event group${deleteConfirm.group_count !== 1 ? "s are" : " is"} currently using this template. They will become unassigned and won't generate EPG data until you assign them a new template.`
+                  : "This template has global assignments. Deleting it will remove those assignments and affected event groups won't generate EPG data until you assign a new template."
                 }
               </p>
             </div>
