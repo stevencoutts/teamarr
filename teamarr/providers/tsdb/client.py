@@ -409,7 +409,11 @@ class TSDBClient:
         if not self._league_mapping_source:
             return "sports"
         mapping = self._league_mapping_source.get_mapping(league, "tsdb")
-        return mapping.sport if mapping else "sports"
+        if mapping and mapping.sport:
+            return mapping.sport
+        # Try league_cache for discovered leagues
+        cached = self._league_mapping_source.get_league_sport(league)
+        return cached if cached else "sports"
 
     def get_events_by_date(self, league: str, date_str: str) -> dict | None:
         """Fetch events for a league on a specific date.

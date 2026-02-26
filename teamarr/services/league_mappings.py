@@ -134,12 +134,12 @@ class LeagueMappingService:
                 if row["sport"]:
                     self._league_sports[league_code_lower] = row["sport"]
 
-            # Also load league names and logos from league_cache for fallback
+            # Also load league names, logos, and sports from league_cache for fallback
+            # This covers discovered leagues not in the static leagues table
             cursor = conn.execute(
                 """
-                SELECT league_slug, league_name, logo_url
+                SELECT league_slug, league_name, logo_url, sport
                 FROM league_cache
-                WHERE league_name IS NOT NULL OR logo_url IS NOT NULL
                 """
             )
             for row in cursor.fetchall():
@@ -148,6 +148,9 @@ class LeagueMappingService:
                     self._league_cache_names[slug] = row["league_name"]
                 if row["logo_url"] and slug not in self._league_cache_logos:
                     self._league_cache_logos[slug] = row["logo_url"]
+                # Sport fallback: only set if not already known from leagues table
+                if row["sport"] and slug not in self._league_sports:
+                    self._league_sports[slug] = row["sport"]
 
             # Load sport display names from sports table
             self._sport_display_names = get_sport_display_names_from_db(conn)
@@ -333,6 +336,24 @@ class LeagueMappingService:
 
         # Fallback to title case
         return sport_code.title()
+
+    def get_league_sport(self, league_code: str) -> str | None:
+        """Get canonical sport code for a league.
+
+        Fallback chain:
+            1. sport from leagues table (via _league_sports)
+            2. sport from league_cache table (discovered leagues)
+
+        Thread-safe: uses in-memory cache, no DB access.
+
+        Args:
+            league_code: Raw league code (e.g., 'concacaf.champions', 'nfl')
+
+        Returns:
+            Lowercase sport code (e.g., 'soccer', 'football') or None
+        """
+        key = league_code.lower()
+        return self._league_sports.get(key)
 
     def get_mapping(self, league_code: str, provider: str) -> LeagueMapping | None:
         """Get mapping for a specific league and provider.

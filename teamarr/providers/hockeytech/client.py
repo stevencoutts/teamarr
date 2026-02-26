@@ -145,7 +145,11 @@ class HockeyTechClient:
         if not self._league_mapping_source:
             return "hockey"
         mapping = self._league_mapping_source.get_mapping(league, "hockeytech")
-        return mapping.sport if mapping else "hockey"
+        if mapping and mapping.sport:
+            return mapping.sport
+        # Try league_cache for discovered leagues
+        cached = self._league_mapping_source.get_league_sport(league)
+        return cached if cached else "hockey"
 
     def _request(
         self,
