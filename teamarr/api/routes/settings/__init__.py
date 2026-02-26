@@ -72,6 +72,8 @@ def get_settings():
             epg_id=settings.dispatcharr.epg_id,
             default_channel_profile_ids=settings.dispatcharr.default_channel_profile_ids,
             default_stream_profile_id=settings.dispatcharr.default_stream_profile_id,
+            default_channel_group_id=settings.dispatcharr.default_channel_group_id,
+            default_channel_group_mode=settings.dispatcharr.default_channel_group_mode,
             cleanup_unused_logos=settings.dispatcharr.cleanup_unused_logos,
         ),
         lifecycle=LifecycleSettingsModel(
