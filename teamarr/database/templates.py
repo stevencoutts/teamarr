@@ -635,26 +635,19 @@ def template_to_event_config(template: Template) -> EventTemplateConfig:
     # Get categories from template
     categories = template.xmltv_categories or []
 
-    # Use template values when set, otherwise let EventTemplateConfig
-    # dataclass defaults provide sensible fallbacks
-    kwargs: dict = {
-        "program_art_url": template.program_art_url,
-        "event_channel_logo_url": template.event_channel_logo_url,
-        "xmltv_flags": template.xmltv_flags or {},
-        "xmltv_video": template.xmltv_video or {},
-        "xmltv_categories": categories,
-        "conditional_descriptions": template.conditional_descriptions or [],
-    }
-    if template.title_format:
-        kwargs["title_format"] = template.title_format
-    if template.event_channel_name:
-        kwargs["channel_name_format"] = template.event_channel_name
-    if template.description_template:
-        kwargs["description_format"] = template.description_template
-    if template.subtitle_template:
-        kwargs["subtitle_format"] = template.subtitle_template
-
-    return EventTemplateConfig(**kwargs)
+    return EventTemplateConfig(
+        # No hardcoded defaults - schema provides them
+        title_format=template.title_format or "",
+        channel_name_format=template.event_channel_name or "",
+        description_format=template.description_template or "",
+        subtitle_format=template.subtitle_template or "",
+        program_art_url=template.program_art_url,
+        event_channel_logo_url=template.event_channel_logo_url,
+        xmltv_flags=template.xmltv_flags or {},
+        xmltv_video=template.xmltv_video or {},
+        xmltv_categories=categories,
+        conditional_descriptions=template.conditional_descriptions or [],
+    )
 
 
 # =============================================================================
