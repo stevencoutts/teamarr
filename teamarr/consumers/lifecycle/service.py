@@ -413,11 +413,33 @@ class ChannelLifecycleService:
         if template_id:
             template = get_template(conn, template_id)
             if template:
-                return template_to_event_config(template)
+                config = template_to_event_config(template)
+                if not config.channel_name_format:
+                    logger.warning(
+                        "[LIFECYCLE] Template %d (%s) resolved for event %s "
+                        "(sport=%r, league=%r) but has no channel_name_format "
+                        "(event_channel_name=%r)",
+                        template_id,
+                        template.name,
+                        event.id,
+                        event_sport,
+                        event_league,
+                        template.event_channel_name,
+                    )
+                return config
             logger.warning(
                 "[LIFECYCLE] Template %s not found for event %s",
                 template_id,
                 event.id,
+            )
+        else:
+            logger.warning(
+                "[LIFECYCLE] No template matched for event %s "
+                "(sport=%r, league=%r), fallback=%s",
+                event.id,
+                event_sport,
+                event_league,
+                type(fallback_template).__name__ if fallback_template else None,
             )
 
         # Fall back to the provided template
