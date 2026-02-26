@@ -141,11 +141,11 @@ class HockeyTechClient:
         return (client_code, api_key)
 
     def get_sport(self, league: str) -> str:
-        """Get sport name for a league."""
+        """Get canonical sport code for a league (lowercase)."""
         if not self._league_mapping_source:
-            return "Hockey"
+            return "hockey"
         mapping = self._league_mapping_source.get_mapping(league, "hockeytech")
-        return mapping.sport if mapping else "Hockey"
+        return mapping.sport if mapping else "hockey"
 
     def _request(
         self,

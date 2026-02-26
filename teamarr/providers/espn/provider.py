@@ -88,11 +88,13 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         return "Unknown"
 
     def _get_sport(self, league: str) -> str:
-        """Get display sport name for a league (title case).
+        """Get canonical sport code for a league (lowercase).
 
-        Uses _get_display_sport for consistent title case display.
+        Returns lowercase sport code matching the leagues table (e.g., 'soccer',
+        'football', 'hockey'). Use _get_display_sport for title-case display.
         """
-        return self._get_display_sport(league)
+        display = self._get_display_sport(league)
+        return display.lower() if display else "unknown"
 
     def get_events(self, league: str, target_date: date) -> list[Event]:
         # UFC uses different API endpoint
@@ -110,7 +112,7 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         sport_league = self._get_sport_league_from_db(league)
 
         # Check if this is a tournament sport
-        sport = self._get_display_sport(league)
+        sport = self._get_sport(league)
         if sport in TOURNAMENT_SPORTS:
             return self._get_tournament_events(league, target_date, sport)
 
@@ -292,7 +294,7 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
             return None
 
         logo_url = self._extract_logo(team_data)
-        sport = self._get_display_sport(league)
+        sport = self._get_sport(league)
 
         return Team(
             id=team_data.get("id", team_id),
@@ -701,7 +703,7 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
 
         # Fall back to database/heuristics only if ESPN didn't provide sport
         if not sport:
-            sport = self._get_display_sport(league)
+            sport = self._get_sport(league)
 
         for entry in team_list:
             # Entry may be {"team": {...}} or just {...}

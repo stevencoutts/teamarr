@@ -27,7 +27,7 @@ class LeagueMapping:
     provider: str  # 'espn' or 'tsdb'
     provider_league_id: str  # ESPN: 'football/nfl', TSDB: '5159'
     provider_league_name: str | None  # TSDB only: 'Canadian OHL'
-    sport: str  # 'Football', 'Hockey', 'Soccer'
+    sport: str  # lowercase: 'football', 'hockey', 'soccer'
     display_name: str  # 'NFL', 'Ontario Hockey League'
     logo_url: str | None = None
     league_id: str | None = None  # URL-safe identifier for {league_id} variable

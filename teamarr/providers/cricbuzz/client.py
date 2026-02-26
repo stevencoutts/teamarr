@@ -188,8 +188,8 @@ class CricbuzzClient:
         return (series_id, slug)
 
     def get_sport(self, league: str) -> str:
-        """Get sport name for a league."""
-        return "Cricket"  # All Cricbuzz leagues are cricket
+        """Get canonical sport code for a league (lowercase)."""
+        return "cricket"  # All Cricbuzz leagues are cricket
 
     def _fetch_page(self, url: str) -> str | None:
         """Fetch HTML page with retry logic."""

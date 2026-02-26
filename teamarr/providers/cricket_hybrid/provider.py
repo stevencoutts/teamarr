@@ -250,7 +250,7 @@ class CricketHybridProvider(SportsProvider):
                     short_name=row["team_short_name"] or row["team_name"][:10],
                     abbreviation=row["team_abbrev"] or row["team_name"][:3].upper(),
                     league=league,
-                    sport=row["sport"] or "Cricket",
+                    sport=row["sport"] or "cricket",
                     logo_url=row["logo_url"],
                 )
         return None

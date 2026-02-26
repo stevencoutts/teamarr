@@ -405,11 +405,11 @@ class TSDBClient:
         return mapping.provider_league_name if mapping else None
 
     def get_sport(self, league: str) -> str:
-        """Get sport name for a league."""
+        """Get canonical sport code for a league (lowercase)."""
         if not self._league_mapping_source:
-            return "Sports"
+            return "sports"
         mapping = self._league_mapping_source.get_mapping(league, "tsdb")
-        return mapping.sport if mapping else "Sports"
+        return mapping.sport if mapping else "sports"
 
     def get_events_by_date(self, league: str, date_str: str) -> dict | None:
         """Fetch events for a league on a specific date.
