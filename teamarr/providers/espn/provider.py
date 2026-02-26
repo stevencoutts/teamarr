@@ -90,11 +90,17 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
     def _get_sport(self, league: str) -> str:
         """Get canonical sport code for a league (lowercase).
 
-        Returns lowercase sport code matching the leagues table (e.g., 'soccer',
-        'football', 'hockey'). Use _get_display_sport for title-case display.
+        Resolution chain:
+        1. Database mapping (authoritative)
+        2. ESPN dot-notation inference (e.g., 'concacaf.champions' → 'soccer')
+        3. 'unknown' fallback
         """
         display = self._get_display_sport(league)
-        return display.lower() if display else "unknown"
+        sport = display.lower() if display else "unknown"
+        if sport == "unknown" and "." in league:
+            # Dot-notation leagues are soccer in ESPN (same logic as client)
+            sport = "soccer"
+        return sport
 
     def get_events(self, league: str, target_date: date) -> list[Event]:
         # UFC uses different API endpoint

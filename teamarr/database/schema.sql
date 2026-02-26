@@ -878,6 +878,7 @@ INSERT OR REPLACE INTO leagues (league_code, provider, provider_league_id, provi
     ('conmebol.america', 'espn', 'soccer/conmebol.america', NULL, 'Copa America', 'soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/73.png', NULL, 1, NULL, 'copa-america', 'team_vs_team', 'Copa America Soccer', NULL, NULL),
     ('concacaf.gold', 'espn', 'soccer/concacaf.gold', NULL, 'CONCACAF Gold Cup', 'soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/128.png', NULL, 1, 'Gold Cup', 'gold-cup', 'team_vs_team', 'CONCACAF Gold Cup Soccer', NULL, NULL),
     ('concacaf.nations.league', 'espn', 'soccer/concacaf.nations.league', NULL, 'CONCACAF Nations League', 'soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/2737.png', NULL, 1, 'CNL', 'cnl', 'team_vs_team', 'CONCACAF Nations League Soccer', NULL, NULL),
+    ('concacaf.champions', 'espn', 'soccer/concacaf.champions', NULL, 'CONCACAF Champions Cup', 'soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/2164.png', NULL, 1, 'CCL', 'ccl', 'team_vs_team', 'CONCACAF Champions Cup Soccer', NULL, NULL),
     -- Americas Leagues
     ('mex.1', 'espn', 'soccer/mex.1', NULL, 'Liga MX', 'soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/22.png', NULL, 1, NULL, 'ligamx', 'team_vs_team', 'Liga MX Soccer', NULL, NULL),
     ('arg.1', 'espn', 'soccer/arg.1', NULL, 'Argentine Liga Profesional', 'soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/1.png', NULL, 1, 'LPA', 'lpa', 'team_vs_team', 'Argentine Liga Profesional Soccer', NULL, NULL),
