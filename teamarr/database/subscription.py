@@ -356,9 +356,14 @@ def get_subscription_template_for_event(
         [(t.template_id, t.sports, t.leagues) for t in templates],
     )
 
-    # 1. Check for league match (most specific)
+    event_league_lower = event_league.lower() if event_league else ""
+    event_sport_lower = event_sport.lower() if event_sport else ""
+
+    # 1. Check for league match (most specific, case-insensitive)
     for t in templates:
-        if t.leagues and event_league in t.leagues:
+        if t.leagues and event_league_lower in [
+            lg.lower() for lg in t.leagues
+        ]:
             logger.debug(
                 "[SUBSCRIPTION] Resolved template %d (league=%r match in %s)",
                 t.template_id,
@@ -366,21 +371,12 @@ def get_subscription_template_for_event(
                 t.leagues,
             )
             return t.template_id
-        # Log near-miss for case sensitivity issues
-        if (
-            t.leagues
-            and event_league
-            and event_league.lower() in [lg.lower() for lg in t.leagues]
-        ):
-            logger.warning(
-                "[SUBSCRIPTION] Case mismatch! Event league %r almost matches %s",
-                event_league,
-                t.leagues,
-            )
 
-    # 2. Check for sport match
+    # 2. Check for sport match (case-insensitive)
     for t in templates:
-        if t.sports and event_sport in t.sports:
+        if t.sports and event_sport_lower in [
+            s.lower() for s in t.sports
+        ]:
             logger.debug(
                 "[SUBSCRIPTION] Resolved template %d (sport=%r match in %s)",
                 t.template_id,
