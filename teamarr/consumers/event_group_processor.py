@@ -397,9 +397,9 @@ class EventGroupProcessor:
             return non_soccer + soccer_leagues
 
         if soccer_mode == "teams" and soccer_followed_teams:
-            from teamarr.consumers.cache.queries import CacheQueries
+            from teamarr.consumers.cache.queries import TeamLeagueCache
 
-            cache = CacheQueries(self._db_factory)
+            cache = TeamLeagueCache(self._db_factory)
             discovered: set[str] = set()
             for team in soccer_followed_teams:
                 provider = team.get("provider", "espn")
