@@ -489,14 +489,14 @@ class ChannelLifecycleService:
                 from teamarr.database.channel_numbers import get_global_consolidation_mode
                 duplicate_mode = get_global_consolidation_mode(conn)
 
-                # Channel group defaults (per-league overrides applied in event loop)
-                static_channel_group_id = None
-                channel_group_mode = "static"
-
                 # Profile IDs from global settings (per-league overrides below)
                 from teamarr.database.settings import get_dispatcharr_settings
 
                 dispatcharr_settings = get_dispatcharr_settings(conn)
+
+                # Channel group defaults from global settings (per-league overrides in event loop)
+                static_channel_group_id = dispatcharr_settings.default_channel_group_id
+                channel_group_mode = dispatcharr_settings.default_channel_group_mode or "static"
                 raw_profile_ids = dispatcharr_settings.default_channel_profile_ids
 
                 # Load per-league subscription configs for override
@@ -1659,8 +1659,12 @@ class ChannelLifecycleService:
                 changes_made.append(f"number: {current_number} → {expected_number}")
 
             # 3. Check channel_group_id (supports dynamic sport/league resolution)
-            channel_group_mode = "static"
-            static_group_id = None
+            # Use global defaults from settings, then per-league overrides
+            from teamarr.database.settings import get_dispatcharr_settings as _get_ds
+
+            _ds = _get_ds(conn)
+            channel_group_mode = _ds.default_channel_group_mode or "static"
+            static_group_id = _ds.default_channel_group_id
             event_sport = getattr(event, "sport", None)
             event_league = getattr(event, "league", None)
 

@@ -230,6 +230,8 @@ CREATE TABLE IF NOT EXISTS settings (
     dispatcharr_epg_id INTEGER,               -- Teamarr's EPG source ID in Dispatcharr
     default_channel_profile_ids JSON,         -- Default channel profiles for event channels
     default_stream_profile_id INTEGER,        -- Default stream profile for event channels
+    default_channel_group_id INTEGER,         -- Default channel group for event channels
+    default_channel_group_mode TEXT DEFAULT 'static', -- 'static', 'sport', 'league', or custom pattern
     cleanup_unused_logos BOOLEAN DEFAULT 0,   -- Call Dispatcharr's cleanup API after generation
 
     -- Reconciliation Settings
@@ -549,8 +551,7 @@ CREATE TABLE IF NOT EXISTS subscription_league_config (
     league_code TEXT NOT NULL UNIQUE,
     channel_profile_ids JSON DEFAULT NULL,     -- NULL = use global default
     channel_group_id INTEGER DEFAULT NULL,     -- NULL = use global default
-    channel_group_mode TEXT DEFAULT NULL        -- NULL = use global default ('static', 'sport', 'league')
-        CHECK(channel_group_mode IS NULL OR channel_group_mode IN ('static', 'sport', 'league'))
+    channel_group_mode TEXT DEFAULT NULL        -- NULL = use global default ('static', 'sport', 'league', or custom pattern)
 );
 
 

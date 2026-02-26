@@ -1076,6 +1076,45 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 61 (subscription league config)")
         current_version = 61
 
+    # v62: Global default channel group settings + relax CHECK constraint on league config
+    if current_version < 62:
+        _add_column_if_not_exists(
+            conn, "settings", "default_channel_group_id", "INTEGER"
+        )
+        _add_column_if_not_exists(
+            conn, "settings", "default_channel_group_mode", "TEXT DEFAULT 'static'"
+        )
+
+        # Recreate subscription_league_config without CHECK constraint on channel_group_mode
+        # to allow custom patterns like "{sport} | {league}"
+        try:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS subscription_league_config_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    league_code TEXT NOT NULL UNIQUE,
+                    channel_profile_ids JSON DEFAULT NULL,
+                    channel_group_id INTEGER DEFAULT NULL,
+                    channel_group_mode TEXT DEFAULT NULL
+                )
+            """)
+            conn.execute("""
+                INSERT OR IGNORE INTO subscription_league_config_new
+                    (id, league_code, channel_profile_ids, channel_group_id, channel_group_mode)
+                SELECT id, league_code, channel_profile_ids, channel_group_id, channel_group_mode
+                FROM subscription_league_config
+            """)
+            conn.execute("DROP TABLE subscription_league_config")
+            conn.execute(
+                "ALTER TABLE subscription_league_config_new RENAME TO subscription_league_config"
+            )
+            logger.info("[MIGRATE v62] Recreated subscription_league_config (no CHECK)")
+        except sqlite3.OperationalError as e:
+            logger.warning("[MIGRATE v62] Could not recreate subscription_league_config: %s", e)
+
+        conn.execute("UPDATE settings SET schema_version = 62 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 62 (global default channel group)")
+        current_version = 62
+
 
 # =============================================================================
 # LEGACY MIGRATION HELPER FUNCTIONS

@@ -80,6 +80,8 @@ def get_all_settings(conn: Connection) -> AllSettings:
             epg_id=row["dispatcharr_epg_id"],
             default_channel_profile_ids=default_profile_ids,
             default_stream_profile_id=row["default_stream_profile_id"],
+            default_channel_group_id=row["default_channel_group_id"],
+            default_channel_group_mode=row["default_channel_group_mode"] or "static",
             cleanup_unused_logos=bool(row["cleanup_unused_logos"])
             if row["cleanup_unused_logos"] is not None
             else False,
@@ -207,7 +209,8 @@ def get_dispatcharr_settings(conn: Connection) -> DispatcharrSettings:
     cursor = conn.execute(
         """SELECT dispatcharr_enabled, dispatcharr_url, dispatcharr_username,
                   dispatcharr_password, dispatcharr_epg_id, default_channel_profile_ids,
-                  default_stream_profile_id, cleanup_unused_logos
+                  default_stream_profile_id, default_channel_group_id,
+                  default_channel_group_mode, cleanup_unused_logos
            FROM settings WHERE id = 1"""
     )
     row = cursor.fetchone()
@@ -233,6 +236,8 @@ def get_dispatcharr_settings(conn: Connection) -> DispatcharrSettings:
         epg_id=row["dispatcharr_epg_id"],
         default_channel_profile_ids=default_profile_ids,
         default_stream_profile_id=row["default_stream_profile_id"],
+        default_channel_group_id=row["default_channel_group_id"],
+        default_channel_group_mode=row["default_channel_group_mode"] or "static",
         cleanup_unused_logos=bool(row["cleanup_unused_logos"])
         if row["cleanup_unused_logos"] is not None
         else False,

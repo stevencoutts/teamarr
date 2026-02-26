@@ -12,6 +12,10 @@ export interface DispatcharrSettings {
   default_channel_profile_ids: (number | string)[] | null
   // Default stream profile for event channels (overrideable per-group)
   default_stream_profile_id: number | null
+  // Default channel group for event channels (overrideable per-league)
+  default_channel_group_id: number | null
+  // Channel group mode: 'static', 'sport', 'league', or custom pattern
+  default_channel_group_mode: string | null
   // Clean up ALL unused logos in Dispatcharr after generation
   cleanup_unused_logos: boolean
 }

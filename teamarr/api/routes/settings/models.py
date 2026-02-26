@@ -55,6 +55,10 @@ class DispatcharrSettingsModel(BaseModel):
     default_channel_profile_ids: list[str | int] | None = None
     # Default stream profile for event channels (overrideable per-group)
     default_stream_profile_id: int | None = None
+    # Default channel group for event channels (overrideable per-league)
+    default_channel_group_id: int | None = None
+    # Channel group mode: 'static', 'sport', 'league', or custom pattern
+    default_channel_group_mode: str | None = None
     # Clean up ALL unused logos in Dispatcharr after generation
     cleanup_unused_logos: bool = False
 
@@ -74,6 +78,8 @@ class DispatcharrSettingsUpdate(BaseModel):
     epg_id: int | None = None
     default_channel_profile_ids: list[str | int] | None = None
     default_stream_profile_id: int | None = None
+    default_channel_group_id: int | None = None
+    default_channel_group_mode: str | None = None
     cleanup_unused_logos: bool | None = None
 
     @field_validator("default_channel_profile_ids", mode="before")

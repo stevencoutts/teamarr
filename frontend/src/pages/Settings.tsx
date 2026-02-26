@@ -632,7 +632,14 @@ function LeagueConfigRow({
     return g?.name ?? `#${config.channel_group_id}`
   })()
 
-  const modeSummary = config?.channel_group_mode ?? "Default"
+  const modeSummary = (() => {
+    const mode = config?.channel_group_mode
+    if (!mode) return "Default"
+    if (mode === "static") return "Static"
+    if (mode === "sport") return "Sport"
+    if (mode === "league") return "League"
+    return `Custom: ${mode}`
+  })()
 
   const handleSave = async () => {
     setSaving(true)
@@ -747,10 +754,18 @@ function LeagueConfigRow({
                   How the channel group is determined: static (use selected group), or dynamic by sport/league name.
                 </p>
                 <Select
-                  value={localGroupMode ?? ""}
+                  value={
+                    localGroupMode && !["static", "sport", "league"].includes(localGroupMode)
+                      ? "custom"
+                      : localGroupMode ?? ""
+                  }
                   onChange={(e) => {
                     const v = e.target.value
-                    setLocalGroupMode(v || null)
+                    if (v === "custom") {
+                      setLocalGroupMode("{sport} | {league}")
+                    } else {
+                      setLocalGroupMode(v || null)
+                    }
                   }}
                   className="w-64"
                 >
@@ -758,7 +773,16 @@ function LeagueConfigRow({
                   <option value="static">Static (use selected group)</option>
                   <option value="sport">Dynamic by Sport</option>
                   <option value="league">Dynamic by League</option>
+                  <option value="custom">Custom pattern</option>
                 </Select>
+                {localGroupMode && !["static", "sport", "league"].includes(localGroupMode) && (
+                  <Input
+                    value={localGroupMode}
+                    onChange={(e) => setLocalGroupMode(e.target.value)}
+                    placeholder="{sport} | {league}"
+                    className="w-64 mt-2"
+                  />
+                )}
               </div>
 
               {/* Actions */}
@@ -977,6 +1001,8 @@ export function Settings() {
         epg_id: settings.dispatcharr.epg_id,
         default_channel_profile_ids: settings.dispatcharr.default_channel_profile_ids,
         default_stream_profile_id: settings.dispatcharr.default_stream_profile_id,
+        default_channel_group_id: settings.dispatcharr.default_channel_group_id,
+        default_channel_group_mode: settings.dispatcharr.default_channel_group_mode,
         cleanup_unused_logos: settings.dispatcharr.cleanup_unused_logos,
       })
       setLifecycle(settings.lifecycle)
@@ -1042,6 +1068,8 @@ export function Settings() {
         epg_id: dispatcharr.epg_id,
         default_channel_profile_ids: profileIdsToSave,
         default_stream_profile_id: dispatcharr.default_stream_profile_id,
+        default_channel_group_id: dispatcharr.default_channel_group_id,
+        default_channel_group_mode: dispatcharr.default_channel_group_mode,
         cleanup_unused_logos: dispatcharr.cleanup_unused_logos,
       }
       if (dispatcharr.password) {
@@ -2684,7 +2712,99 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* Card 5: Logo Cleanup */}
+      {/* Card 5: Default Channel Group */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Default Channel Group</CardTitle>
+          <CardDescription>Default group and mode for event channels</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Channel Group</Label>
+            <Select
+              value={dispatcharr.default_channel_group_id?.toString() ?? ""}
+              onChange={(e) => {
+                const v = e.target.value
+                setDispatcharr({
+                  ...dispatcharr,
+                  default_channel_group_id: v ? parseInt(v) : null,
+                })
+              }}
+              disabled={!dispatcharrStatus.data?.connected}
+              className="w-64"
+            >
+              <option value="">None</option>
+              {(channelGroupsQuery.data ?? []).map((g) => (
+                <option key={g.id} value={g.id.toString()}>
+                  {g.name}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Static group used when mode is "Static". Per-league overrides take priority.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Group Mode</Label>
+            <Select
+              value={
+                dispatcharr.default_channel_group_mode &&
+                !["static", "sport", "league"].includes(dispatcharr.default_channel_group_mode)
+                  ? "custom"
+                  : dispatcharr.default_channel_group_mode ?? "static"
+              }
+              onChange={(e) => {
+                const v = e.target.value
+                if (v === "custom") {
+                  setDispatcharr({ ...dispatcharr, default_channel_group_mode: "{sport} | {league}" })
+                } else {
+                  setDispatcharr({ ...dispatcharr, default_channel_group_mode: v || "static" })
+                }
+              }}
+              className="w-64"
+            >
+              <option value="static">Static (use selected group)</option>
+              <option value="sport">Dynamic by Sport</option>
+              <option value="league">Dynamic by League</option>
+              <option value="custom">Custom pattern</option>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Static uses the group above. Dynamic modes auto-create groups named by sport or league.
+              Custom lets you define a pattern with {"{sport}"} and {"{league}"} placeholders.
+            </p>
+          </div>
+
+          {dispatcharr.default_channel_group_mode &&
+            !["static", "sport", "league"].includes(dispatcharr.default_channel_group_mode) && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Custom Pattern</Label>
+              <Input
+                value={dispatcharr.default_channel_group_mode}
+                onChange={(e) =>
+                  setDispatcharr({ ...dispatcharr, default_channel_group_mode: e.target.value })
+                }
+                placeholder="{sport} | {league}"
+                className="w-64"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use {"{sport}"} and {"{league}"} as placeholders. Example: "{"{sport}"} | {"{league}"}" creates groups like "Hockey | NHL".
+              </p>
+            </div>
+          )}
+
+          <Button onClick={handleSaveDispatcharr} disabled={updateDispatcharr.isPending}>
+            {updateDispatcharr.isPending ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-1" />
+            )}
+            Save
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Card 6: Logo Cleanup */}
       <Card>
         <CardHeader>
           <CardTitle>Logo Cleanup</CardTitle>

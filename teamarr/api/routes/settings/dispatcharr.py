@@ -30,6 +30,8 @@ def get_dispatcharr_settings():
         epg_id=settings.epg_id,
         default_channel_profile_ids=settings.default_channel_profile_ids,
         default_stream_profile_id=settings.default_stream_profile_id,
+        default_channel_group_id=settings.default_channel_group_id,
+        default_channel_group_mode=settings.default_channel_group_mode,
         cleanup_unused_logos=settings.cleanup_unused_logos,
     )
 
@@ -53,6 +55,8 @@ def update_dispatcharr_settings(update: DispatcharrSettingsUpdate):
             epg_id=update.epg_id,
             default_channel_profile_ids=update.default_channel_profile_ids,
             default_stream_profile_id=update.default_stream_profile_id,
+            default_channel_group_id=update.default_channel_group_id,
+            default_channel_group_mode=update.default_channel_group_mode,
             cleanup_unused_logos=update.cleanup_unused_logos,
         )
 
@@ -75,6 +79,8 @@ def update_dispatcharr_settings(update: DispatcharrSettingsUpdate):
         epg_id=settings.epg_id,
         default_channel_profile_ids=settings.default_channel_profile_ids,
         default_stream_profile_id=settings.default_stream_profile_id,
+        default_channel_group_id=settings.default_channel_group_id,
+        default_channel_group_mode=settings.default_channel_group_mode,
         cleanup_unused_logos=settings.cleanup_unused_logos,
     )
 

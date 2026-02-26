@@ -22,6 +22,8 @@ def update_dispatcharr_settings(
     epg_id: int | None = None,
     default_channel_profile_ids: list[int] | None | object = _NOT_PROVIDED,
     default_stream_profile_id: int | None | object = _NOT_PROVIDED,
+    default_channel_group_id: int | None | object = _NOT_PROVIDED,
+    default_channel_group_mode: str | None | object = _NOT_PROVIDED,
     cleanup_unused_logos: bool | None = None,
 ) -> bool:
     """Update Dispatcharr settings.
@@ -74,6 +76,14 @@ def update_dispatcharr_settings(
     if default_stream_profile_id is not _NOT_PROVIDED:
         updates.append("default_stream_profile_id = ?")
         values.append(default_stream_profile_id)  # None becomes SQL NULL
+    # default_channel_group_id: _NOT_PROVIDED = don't update, None = no group, int = set
+    if default_channel_group_id is not _NOT_PROVIDED:
+        updates.append("default_channel_group_id = ?")
+        values.append(default_channel_group_id)  # None becomes SQL NULL
+    # default_channel_group_mode: _NOT_PROVIDED = don't update, None = clear, str = set
+    if default_channel_group_mode is not _NOT_PROVIDED:
+        updates.append("default_channel_group_mode = ?")
+        values.append(default_channel_group_mode)
     if cleanup_unused_logos is not None:
         updates.append("cleanup_unused_logos = ?")
         values.append(int(cleanup_unused_logos))
