@@ -1402,8 +1402,10 @@ class ChannelLifecycleService:
         }
 
         if not name_format:
-            # No template configured — use sensible default
-            name_format = "{away_team_abbrev} @ {home_team_abbrev}"
+            raise ValueError(
+                f"Template has no channel name format for event {event.id} - "
+                "template must define event_channel_name or channel_name_format"
+            )
 
         # Check if template uses {exception_keyword} - if so, don't auto-append
         template_uses_keyword = "{exception_keyword}" in name_format
