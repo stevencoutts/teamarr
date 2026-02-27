@@ -810,6 +810,7 @@ class ChannelLifecycleService:
         result = StreamProcessResult()
         stream_name = stream.get("name", "")
         stream_id = stream.get("id")
+        disp_channel = None  # Dispatcharr's view of this channel (for phantom detection)
 
         # Verify channel exists in Dispatcharr
         # If missing, mark as deleted and return None to signal caller to create new
@@ -891,6 +892,27 @@ class ChannelLifecycleService:
                 # Sync with Dispatcharr - use ordered stream list to respect rules
                 if self._channel_manager:
                     ordered_streams = get_ordered_stream_ids(conn, existing.id)
+
+                    # Purge phantom streams: IDs in our DB that Dispatcharr
+                    # no longer knows about (e.g. after M3U re-import).
+                    # Sending them causes "Invalid pk" and blocks ALL updates.
+                    if disp_channel:
+                        valid_ids = set(disp_channel.streams) | {stream_id}
+                        phantoms = [s for s in ordered_streams if s not in valid_ids]
+                        if phantoms:
+                            for pid in phantoms:
+                                remove_stream_from_channel(
+                                    conn, existing.id, pid,
+                                    reason="phantom: not in Dispatcharr",
+                                )
+                            logger.warning(
+                                "[STREAM_AUDIT] purged %d phantom stream(s) from ch='%s' "
+                                "(db_id=%d): %s",
+                                len(phantoms), existing.channel_name,
+                                existing.id, phantoms,
+                            )
+                            ordered_streams = [s for s in ordered_streams if s not in phantoms]
+
                     logger.info(
                         "[STREAM_AUDIT] consolidate add: ch='%s' (db_id=%d, d_id=%s) "
                         "added stream_id=%d, db_ordered=%s",
