@@ -149,12 +149,15 @@ class DeleteResponse(BaseModel):
 
 @router.get("/managed", response_model=ManagedChannelListResponse)
 def list_managed_channels(
-    group_id: int | None = Query(None, description="Filter by event EPG group"),
+    group_id: int | None = Query(None, description="Filter by source group (provenance)"),
+    sport: str | None = Query(None, description="Filter by sport"),
+    league: str | None = Query(None, description="Filter by league"),
     include_deleted: bool = Query(False, description="Include deleted channels"),
 ):
     """List all managed channels.
 
     Returns channels tracked by Teamarr for lifecycle management.
+    Primary filters: sport, league. Secondary: group_id (source provenance).
     """
     from teamarr.database.channels import (
         get_all_managed_channels,
@@ -167,7 +170,10 @@ def list_managed_channels(
                 conn, group_id, include_deleted=include_deleted
             )
         else:
-            channels = get_all_managed_channels(conn, include_deleted=include_deleted)
+            channels = get_all_managed_channels(
+                conn, include_deleted=include_deleted,
+                sport=sport, league=league,
+            )
 
     return ManagedChannelListResponse(
         channels=[

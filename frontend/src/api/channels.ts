@@ -90,10 +90,14 @@ export interface PendingDeletionsResponse {
 
 export async function listManagedChannels(
   groupId?: number,
-  includeDeleted = false
+  includeDeleted = false,
+  sport?: string,
+  league?: string,
 ): Promise<ManagedChannelListResponse> {
   const params = new URLSearchParams()
   if (groupId !== undefined) params.set("group_id", groupId.toString())
+  if (sport) params.set("sport", sport)
+  if (league) params.set("league", league)
   if (includeDeleted) params.set("include_deleted", "true")
   const query = params.toString()
   return api.get(`/channels/managed${query ? `?${query}` : ""}`)

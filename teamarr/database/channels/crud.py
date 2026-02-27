@@ -278,26 +278,35 @@ def get_channels_pending_deletion(conn: Connection) -> list[ManagedChannel]:
 def get_all_managed_channels(
     conn: Connection,
     include_deleted: bool = False,
+    sport: str | None = None,
+    league: str | None = None,
 ) -> list[ManagedChannel]:
-    """Get all managed channels.
+    """Get all managed channels, optionally filtered by sport/league.
 
     Args:
         conn: Database connection
         include_deleted: Whether to include deleted channels
+        sport: Optional sport filter
+        league: Optional league filter
 
     Returns:
         List of ManagedChannel objects
     """
-    if include_deleted:
-        cursor = conn.execute(
-            "SELECT * FROM managed_channels ORDER BY sport, league, channel_number"
-        )
-    else:
-        cursor = conn.execute(
-            """SELECT * FROM managed_channels
-               WHERE deleted_at IS NULL
-               ORDER BY sport, league, channel_number"""
-        )
+    conditions = []
+    params: list = []
+
+    if not include_deleted:
+        conditions.append("deleted_at IS NULL")
+    if sport:
+        conditions.append("sport = ?")
+        params.append(sport)
+    if league:
+        conditions.append("league = ?")
+        params.append(league)
+
+    where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+    sql = f"SELECT * FROM managed_channels{where} ORDER BY sport, league, channel_number"
+    cursor = conn.execute(sql, params)
     return [ManagedChannel.from_row(dict(row)) for row in cursor.fetchall()]
 
 
