@@ -1281,6 +1281,147 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         )
         current_version = 63
 
+    # v64: Dedup cross-group duplicate channels + event-scoped unique index
+    # Channels are now identified by (event_id, event_provider, keyword, stream_id)
+    # regardless of which source group created them.
+    if current_version < 64:
+        # Check if managed_channels table exists
+        has_mc = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master "
+            "WHERE type='table' AND name='managed_channels'"
+        ).fetchone()[0]
+
+        if has_mc:
+            try:
+                _dedup_cross_group_channels(conn)
+            except Exception as e:
+                logger.warning(
+                    "[MIGRATE v64] Dedup failed (non-fatal): %s", e
+                )
+
+            # Replace group-scoped unique index with event-scoped one
+            try:
+                conn.execute("DROP INDEX IF EXISTS idx_mc_unique_event")
+                conn.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_mc_unique_event
+                    ON managed_channels(
+                        event_id, event_provider,
+                        COALESCE(exception_keyword, ''),
+                        primary_stream_id
+                    )
+                    WHERE deleted_at IS NULL
+                """)
+                logger.info(
+                    "[MIGRATE v64] Replaced group-scoped unique index "
+                    "with event-scoped unique index"
+                )
+            except sqlite3.OperationalError as e:
+                logger.warning(
+                    "[MIGRATE v64] Could not create event-scoped "
+                    "unique index: %s", e
+                )
+
+        conn.execute("UPDATE settings SET schema_version = 64 WHERE id = 1")
+        logger.info(
+            "[MIGRATE] Schema upgraded to version 64 "
+            "(event-scoped unique index)"
+        )
+        current_version = 64
+
+
+def _dedup_cross_group_channels(conn: sqlite3.Connection) -> None:
+    """Merge duplicate channels that exist for the same event across groups.
+
+    For each set of duplicates (same event_id + provider + keyword + stream_id),
+    keeps the earliest-created channel and merges streams from losers.
+    """
+    # Find duplicate sets (active channels only)
+    cursor = conn.execute("""
+        SELECT event_id, event_provider,
+               COALESCE(exception_keyword, '') AS kw,
+               primary_stream_id,
+               COUNT(*) AS cnt
+        FROM managed_channels
+        WHERE deleted_at IS NULL
+        GROUP BY event_id, event_provider,
+                 COALESCE(exception_keyword, ''),
+                 primary_stream_id
+        HAVING cnt > 1
+    """)
+    dup_groups = cursor.fetchall()
+
+    if not dup_groups:
+        logger.info("[MIGRATE v64] No duplicate channels found")
+        return
+
+    total_merged = 0
+    for dup in dup_groups:
+        event_id = dup[0]
+        event_provider = dup[1]
+        kw = dup[2]
+        stream_id = dup[3]
+
+        # Get all channels in this duplicate set, ordered by created_at
+        channels = conn.execute(
+            """SELECT id, event_epg_group_id, channel_name,
+                      dispatcharr_channel_id, created_at
+               FROM managed_channels
+               WHERE event_id = ? AND event_provider = ?
+                 AND COALESCE(exception_keyword, '') = ?
+                 AND primary_stream_id IS ?
+                 AND deleted_at IS NULL
+               ORDER BY created_at ASC""",
+            (event_id, event_provider, kw, stream_id),
+        ).fetchall()
+
+        if len(channels) < 2:
+            continue
+
+        # Winner = first created
+        winner_id = channels[0][0]
+        winner_name = channels[0][2]
+
+        for loser in channels[1:]:
+            loser_id = loser[0]
+            loser_name = loser[2]
+
+            # Move streams from loser to winner (skip duplicates)
+            conn.execute(
+                """INSERT OR IGNORE INTO managed_channel_streams
+                   (managed_channel_id, dispatcharr_stream_id,
+                    stream_name, source_group_id, source_group_type,
+                    priority, m3u_account_id, m3u_account_name)
+                   SELECT ?, dispatcharr_stream_id,
+                          stream_name, source_group_id,
+                          source_group_type, priority,
+                          m3u_account_id, m3u_account_name
+                   FROM managed_channel_streams
+                   WHERE managed_channel_id = ?""",
+                (winner_id, loser_id),
+            )
+
+            # Soft-delete the loser
+            conn.execute(
+                """UPDATE managed_channels
+                   SET deleted_at = CURRENT_TIMESTAMP,
+                       delete_reason = 'migration_dedup_v64'
+                   WHERE id = ?""",
+                (loser_id,),
+            )
+            total_merged += 1
+            logger.info(
+                "[MIGRATE v64] Merged channel '%s' (id=%d) into "
+                "'%s' (id=%d) for event %s",
+                loser_name, loser_id, winner_name, winner_id,
+                event_id,
+            )
+
+    logger.info(
+        "[MIGRATE v64] Dedup complete: %d duplicate(s) merged "
+        "from %d duplicate group(s)",
+        total_merged, len(dup_groups),
+    )
+
 
 # =============================================================================
 # LEGACY MIGRATION HELPER FUNCTIONS
