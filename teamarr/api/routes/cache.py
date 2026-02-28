@@ -27,6 +27,7 @@ from teamarr.api.cache_refresh_status import (
 )
 from teamarr.database import get_db
 from teamarr.services import create_cache_service
+from teamarr.services.league_mappings import get_league_mapping_service
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,13 @@ def trigger_refresh():
                 result = svc.refresh(progress_callback=progress_callback)
 
                 if result.success:
+                    # Reload league mapping service so in-memory caches
+                    # pick up newly discovered league names from league_cache
+                    try:
+                        get_league_mapping_service().reload()
+                    except RuntimeError:
+                        pass  # Service not initialized (shouldn't happen)
+
                     complete_refresh(
                         {
                             "success": True,

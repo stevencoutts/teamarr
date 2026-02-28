@@ -432,6 +432,58 @@ class LeagueMappingService:
         # Use primary provider
         return (mapping.provider, mapping.provider_league_id)
 
+    def register_discovered_league(
+        self,
+        league_code: str,
+        league_name: str,
+        sport: str,
+        logo_url: str | None = None,
+    ) -> None:
+        """Register a discovered league name for template variable resolution.
+
+        Updates in-memory cache AND persists to league_cache table.
+        Skips if the league is already in the static leagues table (those take precedence).
+        """
+        key = league_code.lower()
+
+        # Static leagues table takes precedence — don't overwrite
+        if key in self._league_aliases:
+            return
+
+        # Already known from cache with same name — skip
+        if key in self._league_cache_names and self._league_cache_names[key] == league_name:
+            return
+
+        # Update in-memory caches
+        self._league_cache_names[key] = league_name
+        if logo_url:
+            self._league_cache_logos[key] = logo_url
+        if sport and key not in self._league_sports:
+            self._league_sports[key] = sport
+
+        # Persist to league_cache table
+        try:
+            with self._db_getter() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO league_cache (league_slug, provider, league_name, sport, logo_url)
+                    VALUES (?, 'espn', ?, ?, ?)
+                    ON CONFLICT(league_slug, provider) DO UPDATE SET
+                        league_name = excluded.league_name,
+                        logo_url = COALESCE(excluded.logo_url, league_cache.logo_url)
+                    """,
+                    (league_code.lower(), league_name, sport, logo_url),
+                )
+                conn.commit()
+            logger.debug(
+                "[LEAGUE_MAPPING] Registered discovered league: %s = %s (%s)",
+                league_code,
+                league_name,
+                sport,
+            )
+        except Exception:
+            logger.debug("[LEAGUE_MAPPING] Failed to persist discovered league %s", league_code)
+
     def get_mapping_by_league(self, league_code: str) -> LeagueMapping | None:
         """Get mapping for a league code (any provider).
 

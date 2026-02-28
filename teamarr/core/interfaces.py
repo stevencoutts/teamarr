@@ -62,6 +62,20 @@ class LeagueMappingSource(Protocol):
         """
         ...
 
+    def register_discovered_league(
+        self,
+        league_code: str,
+        league_name: str,
+        sport: str,
+        logo_url: str | None = None,
+    ) -> None:
+        """Register a discovered league name for template variable resolution.
+
+        Called opportunistically when scoreboard responses contain league names.
+        Default no-op so existing implementations don't break.
+        """
+        ...
+
 
 # =============================================================================
 # SPORTS PROVIDER - Main provider interface

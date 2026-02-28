@@ -104,6 +104,41 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
                 sport = cached_sport
         return sport
 
+    def _capture_league_name(self, data: dict, league: str) -> None:
+        """Extract league name from scoreboard response and register if discovered.
+
+        ESPN scoreboard responses include a 'leagues' array with name and logo.
+        For discovered leagues (not in static leagues table), this captures the
+        display name so {league} template variable resolves correctly.
+        """
+        if not self._league_mapping_source:
+            return
+
+        try:
+            leagues = data.get("leagues", [])
+            if not leagues:
+                return
+
+            league_info = leagues[0]
+            name = league_info.get("name")
+            if not name:
+                return
+
+            sport = self._get_sport(league)
+            logo_url = None
+            logos = league_info.get("logos", [])
+            if logos:
+                logo_url = logos[0].get("href")
+
+            self._league_mapping_source.register_discovered_league(
+                league_code=league,
+                league_name=name,
+                sport=sport,
+                logo_url=logo_url,
+            )
+        except Exception:
+            pass  # Best-effort, don't break event fetching
+
     def get_events(self, league: str, target_date: date) -> list[Event]:
         # UFC uses different API endpoint
         if league == "ufc":
@@ -128,6 +163,9 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
         data = self._client.get_scoreboard(league, date_str, sport_league)
         if not data:
             return []
+
+        # Capture league name from scoreboard for discovered leagues
+        self._capture_league_name(data, league)
 
         events = []
         for event_data in data.get("events", []):
@@ -260,6 +298,10 @@ class ESPNProvider(UFCParserMixin, TournamentParserMixin, SportsProvider):
             data = self._client.get_scoreboard(league, date_str, sport_league)
             if not data:
                 continue
+
+            # Capture league name on first successful response
+            if day_offset == 0:
+                self._capture_league_name(data, league)
 
             for event_data in data.get("events", []):
                 if self._team_in_event(team_id, event_data):
