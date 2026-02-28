@@ -2188,6 +2188,13 @@ class ChannelLifecycleService:
                         if not stream_id:
                             continue
 
+                        # Skip streams added by other event groups — they are
+                        # managed by those groups and are not in this group's
+                        # M3U pool, so they would be incorrectly flagged missing.
+                        if s.source_group_id is not None and s.source_group_id != group_id:
+                            valid_streams.append(s)
+                            continue
+
                         if stream_id not in current_ids_set:
                             # Stream no longer in M3U
                             missing_streams.append(s)
