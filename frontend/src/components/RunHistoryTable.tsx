@@ -264,7 +264,7 @@ export function RunHistoryTable({ runs, onFixStream }: RunHistoryTableProps) {
                 </TableCell>
                 <TableCell className="text-center">
                   <span className="text-muted-foreground text-xs">
-                    {teams}T / {groups}G
+                    {teams} Teams / {groups} Event Groups
                   </span>
                 </TableCell>
                 <TableCell className="text-center">
