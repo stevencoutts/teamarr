@@ -1094,10 +1094,6 @@ class EventGroupProcessor:
                 # Always store, even if empty - this clears stale XMLTV when no events match
                 self._store_group_xmltv(conn, group.id, xmltv_content or "")
 
-                # Step 7: Trigger Dispatcharr refresh if configured
-                if xmltv_content and self._dispatcharr_client:
-                    self._trigger_epg_refresh(group)
-
             # Mark run as completed successfully
             stats_run.complete(status="completed")
 
@@ -2454,123 +2450,6 @@ class EventGroupProcessor:
         )
         conn.commit()
         logger.debug("[EVENT_EPG] Stored XMLTV for group %d", group_id)
-
-    def _trigger_epg_refresh(self, group: EventEPGGroup) -> None:
-        """Trigger Dispatcharr EPG refresh and associate EPG with channels.
-
-        Dispatcharr needs to re-fetch the XMLTV from Teamarr's endpoint
-        and import it into its EPG data store. After refresh completes,
-        we associate the EPG data with managed channels by tvg_id.
-        """
-        if not self._dispatcharr_client:
-            return
-
-        try:
-            from teamarr.database import get_db
-
-            # Get EPG source ID from settings
-            with get_db() as conn:
-                row = conn.execute(
-                    "SELECT dispatcharr_epg_id FROM settings WHERE id = 1"
-                ).fetchone()
-
-            epg_source_id = row["dispatcharr_epg_id"] if row else None
-
-            if not epg_source_id:
-                logger.debug("[EVENT_EPG] No Dispatcharr EPG source configured - skipping refresh")
-                return
-
-            epg_manager = self._dispatcharr_client.epg
-
-            # Wait for refresh to complete (polls until done or timeout)
-            result = epg_manager.wait_for_refresh(epg_source_id, timeout=120)
-
-            if result.success:
-                logger.info(
-                    f"Dispatcharr EPG refresh completed for source {epg_source_id} "
-                    f"in {result.duration:.1f}s"
-                )
-
-                # Now associate EPG data with managed channels
-                self._associate_epg_with_channels(epg_source_id)
-            else:
-                logger.warning("[EVENT_EPG] EPG refresh failed: %s", result.message)
-
-        except Exception as e:
-            logger.warning("[EVENT_EPG] Error during EPG refresh: %s", e)
-
-    def _associate_epg_with_channels(self, epg_source_id: int) -> None:
-        """Associate EPG data with managed channels after EPG refresh.
-
-        Looks up EPG data by tvg_id and links them to channels in Dispatcharr.
-        """
-        from teamarr.database.channels import get_all_managed_channels
-
-        try:
-            channel_manager = self._dispatcharr_client.channels
-
-            with self._db_factory() as conn:
-                # Get all active managed channels
-                channels = get_all_managed_channels(conn, include_deleted=False)
-
-                if not channels:
-                    logger.debug("[EVENT_EPG] No managed channels to associate EPG with")
-                    return
-
-                # Build EPG data lookup from Dispatcharr
-                epg_lookup = channel_manager.build_epg_lookup(epg_source_id)
-
-                if not epg_lookup:
-                    logger.debug("[EVENT_EPG] No EPG data found in Dispatcharr to associate")
-                    return
-
-                associated = 0
-                not_found = 0
-
-                for channel in channels:
-                    if not channel.dispatcharr_channel_id or not channel.tvg_id:
-                        continue
-
-                    # Look up EPG data by tvg_id
-                    epg_data = epg_lookup.get(channel.tvg_id)
-
-                    if not epg_data:
-                        not_found += 1
-                        continue
-
-                    # Associate EPG with channel
-                    epg_data_id = epg_data.get("id")
-                    if not epg_data_id:
-                        not_found += 1
-                        continue
-
-                    try:
-                        result = channel_manager.set_channel_epg(
-                            channel.dispatcharr_channel_id,
-                            epg_data_id,
-                        )
-                        if result.success:
-                            associated += 1
-                        else:
-                            logger.debug(
-                                f"Failed to set EPG for channel "
-                                f"{channel.channel_name}: {result.error}"
-                            )
-                    except Exception as e:
-                        logger.debug(
-                            f"Failed to associate EPG for channel {channel.channel_name}: {e}"
-                        )
-
-                if associated:
-                    logger.info("[EVENT_EPG] Associated EPG data with %d channels", associated)
-                if not_found:
-                    logger.debug(
-                        "[EVENT_EPG] EPG data not found for %d channels (pending refresh)",
-                        not_found,
-                    )
-
-        except Exception as e:
-            logger.warning("[EVENT_EPG] Error associating EPG with channels: %s", e)
 
 
 # =============================================================================
