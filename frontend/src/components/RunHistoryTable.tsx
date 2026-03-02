@@ -28,12 +28,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { RichTooltip } from "@/components/ui/rich-tooltip"
 import { VirtualizedTable } from "@/components/VirtualizedTable"
 import { useDateFormat } from "@/hooks/useDateFormat"
 import { getMatchedStreams, getFailedMatches } from "@/api/epg"
@@ -231,7 +226,7 @@ export function RunHistoryTable({ runs, onFixStream }: RunHistoryTableProps) {
   }
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <>
       {/* Table */}
       <Table>
         <TableHeader>
@@ -273,19 +268,17 @@ export function RunHistoryTable({ runs, onFixStream }: RunHistoryTableProps) {
                   </span>
                 </TableCell>
                 <TableCell className="text-center">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="cursor-default tabular-nums">{total}</span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <div className="space-y-0.5 text-xs">
-                        <div>{events} events</div>
-                        <div>{pregame} pregame</div>
-                        <div>{postgame} postgame</div>
-                        <div>{idle} idle</div>
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
+                  <RichTooltip
+                    title="Breakdown"
+                    rows={[
+                      { label: "Events", value: events },
+                      { label: "Pregame", value: pregame },
+                      { label: "Postgame", value: postgame },
+                      { label: "Idle", value: idle },
+                    ]}
+                  >
+                    <span className="cursor-help tabular-nums">{total}</span>
+                  </RichTooltip>
                 </TableCell>
                 <TableCell className="text-center">
                   <button
@@ -555,6 +548,6 @@ export function RunHistoryTable({ runs, onFixStream }: RunHistoryTableProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </TooltipProvider>
+    </>
   )
 }
