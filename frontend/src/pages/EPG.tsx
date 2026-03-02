@@ -40,7 +40,6 @@ import {
 import { RunHistoryTable } from "@/components/RunHistoryTable"
 import { useGenerationProgress } from "@/contexts/GenerationContext"
 import { useDateFormat } from "@/hooks/useDateFormat"
-import { VirtualizedTable } from "@/components/VirtualizedTable"
 import {
   useStats,
   useRecentRuns,
@@ -49,8 +48,6 @@ import {
 } from "@/hooks/useEPG"
 import {
   getTeamXmltvUrl,
-  getMatchedStreams,
-  getFailedMatches,
   searchEvents,
   correctStreamMatch,
 } from "@/api/epg"
@@ -81,44 +78,6 @@ function formatDateRange(start: string | null, end: string | null): string {
   return `${formatDate(start)} - ${formatDate(end)}`
 }
 
-function getFailedReasonLabel(reason: string): string {
-  const labels: Record<string, string> = {
-    teams_not_parsed: "Could not parse teams",
-    team1_not_found: "Team 1 not found",
-    team2_not_found: "Team 2 not found",
-    both_teams_not_found: "Neither team found",
-    no_common_league: "No common league",
-    no_league_detected: "No league detected",
-    ambiguous_league: "Ambiguous league",
-    no_event_found: "No event found",
-    no_event_card_match: "No event card match",
-    date_mismatch: "Date mismatch",
-    unmatched: "Unmatched",
-  }
-  return labels[reason] || reason
-}
-
-function getMatchMethodBadge(method: string | null) {
-  switch (method) {
-    case "cache":
-      return <Badge variant="secondary">Cache</Badge>
-    case "user_corrected":
-      return <Badge variant="success">User Fixed</Badge>
-    case "alias":
-      return <Badge variant="info">Alias</Badge>
-    case "pattern":
-      return <Badge variant="outline">Pattern</Badge>
-    case "fuzzy":
-      return <Badge variant="warning">Fuzzy</Badge>
-    case "keyword":
-      return <Badge variant="secondary">Keyword</Badge>
-    case "direct":
-      return <Badge variant="success">Direct</Badge>
-    default:
-      return <Badge variant="outline">{method ?? "Unknown"}</Badge>
-  }
-}
-
 export function EPG() {
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useStats()
   const { data: runsData, isLoading: runsLoading, refetch: refetchRuns } = useRecentRuns(10, "full_epg")
@@ -134,16 +93,8 @@ export function EPG() {
   const [showLineNumbers, setShowLineNumbers] = useState(true)
   const previewRef = useRef<HTMLPreElement>(null)
 
-  // Modal states
-  const [matchedModalRunId, setMatchedModalRunId] = useState<number | null>(null)
-  const [failedModalRunId, setFailedModalRunId] = useState<number | null>(null)
+  // Event matcher modal state
   const [eventMatcherOpen, setEventMatcherOpen] = useState(false)
-
-  // Filter state for modals
-  const [matchedFilter, setMatchedFilter] = useState("")
-  const [matchedGroupFilter, setMatchedGroupFilter] = useState<string>("all")
-  const [failedFilter, setFailedFilter] = useState("")
-  const [failedGroupFilter, setFailedGroupFilter] = useState<string>("all")
 
   // Event matcher state
   const [matcherStream, setMatcherStream] = useState<CorrectableStream | null>(null)
@@ -169,38 +120,13 @@ export function EPG() {
   // EPG URL for IPTV apps
   const epgUrl = `${window.location.origin}${getTeamXmltvUrl()}`
 
-  // Fetch matched streams when modal is open (high limit for virtualization)
-  const { data: matchedData, isLoading: matchedLoading } = useQuery({
-    queryKey: ["matched-streams", matchedModalRunId],
-    queryFn: () => getMatchedStreams(matchedModalRunId ?? undefined, undefined, 5000),
-    enabled: matchedModalRunId !== null,
-  })
-
-  // Fetch failed matches when modal is open (high limit for virtualization)
-  const { data: failedData, isLoading: failedLoading } = useQuery({
-    queryKey: ["failed-matches", failedModalRunId],
-    queryFn: () => getFailedMatches(failedModalRunId ?? undefined, undefined, undefined, 5000),
-    enabled: failedModalRunId !== null,
-  })
-
-  // Fetch leagues for event matcher, matched modal, and failed modal
+  // Fetch leagues for event matcher
   const { data: leaguesData, isLoading: leaguesLoading } = useQuery({
     queryKey: ["cache", "leagues"],
     queryFn: () => getLeagues(false),
-    enabled: eventMatcherOpen || matchedModalRunId !== null || failedModalRunId !== null,
+    enabled: eventMatcherOpen,
     staleTime: 5 * 60 * 1000,
   })
-
-  // Map league codes to display names (uses league_alias if available, otherwise name)
-  const getLeagueDisplay = useMemo(() => {
-    const map = new Map<string, string>()
-    if (leaguesData?.leagues) {
-      for (const league of leaguesData.leagues) {
-        map.set(league.slug, getLeagueDisplayName(league, true))
-      }
-    }
-    return (code: string | null) => code ? (map.get(code) ?? code) : "-"
-  }, [leaguesData?.leagues])
 
   // Sort leagues by sport then name
   const sortedLeagues = useMemo(() => {
@@ -221,64 +147,6 @@ export function EPG() {
     }
     return grouped
   }, [sortedLeagues])
-
-  // Get unique groups from matched streams for filter dropdown
-  const matchedGroups = useMemo(() => {
-    if (!matchedData?.streams) return []
-    const groups = new Set<string>()
-    for (const s of matchedData.streams) {
-      if (s.group_name) groups.add(s.group_name)
-    }
-    return Array.from(groups).sort()
-  }, [matchedData?.streams])
-
-  // Get unique groups from failed matches for filter dropdown
-  const failedGroups = useMemo(() => {
-    if (!failedData?.failures) return []
-    const groups = new Set<string>()
-    for (const f of failedData.failures) {
-      if (f.group_name) groups.add(f.group_name)
-    }
-    return Array.from(groups).sort()
-  }, [failedData?.failures])
-
-  // Filter matched streams by search text and group
-  const filteredMatchedStreams = useMemo(() => {
-    if (!matchedData?.streams) return []
-    const searchLower = matchedFilter.toLowerCase()
-    return matchedData.streams.filter((s) => {
-      // Group filter
-      if (matchedGroupFilter !== "all" && s.group_name !== matchedGroupFilter) return false
-      // Text search
-      if (!searchLower) return true
-      return (
-        s.stream_name.toLowerCase().includes(searchLower) ||
-        s.event_name?.toLowerCase().includes(searchLower) ||
-        s.home_team?.toLowerCase().includes(searchLower) ||
-        s.away_team?.toLowerCase().includes(searchLower) ||
-        s.league?.toLowerCase().includes(searchLower)
-      )
-    })
-  }, [matchedData?.streams, matchedFilter, matchedGroupFilter])
-
-  // Filter failed matches by search text and group
-  const filteredFailedMatches = useMemo(() => {
-    if (!failedData?.failures) return []
-    const searchLower = failedFilter.toLowerCase()
-    return failedData.failures.filter((f) => {
-      // Group filter
-      if (failedGroupFilter !== "all" && f.group_name !== failedGroupFilter) return false
-      // Text search
-      if (!searchLower) return true
-      return (
-        f.stream_name.toLowerCase().includes(searchLower) ||
-        f.extracted_team1?.toLowerCase().includes(searchLower) ||
-        f.extracted_team2?.toLowerCase().includes(searchLower) ||
-        f.detected_league?.toLowerCase().includes(searchLower) ||
-        f.reason.toLowerCase().includes(searchLower)
-      )
-    })
-  }, [failedData?.failures, failedFilter, failedGroupFilter])
 
   const handleCopyUrl = async () => {
     try {
@@ -834,8 +702,7 @@ export function EPG() {
           ) : (
             <RunHistoryTable
               runs={runsData?.runs ?? []}
-              onMatchedClick={(runId) => setMatchedModalRunId(runId)}
-              onFailedClick={(runId) => setFailedModalRunId(runId)}
+              onFixStream={handleOpenEventMatcher}
             />
           )}
         </CardContent>
@@ -889,278 +756,6 @@ export function EPG() {
           )}
         </CardContent>
       </Card>
-
-      {/* Matched Streams Modal */}
-      <Dialog open={matchedModalRunId !== null} onOpenChange={(open) => {
-        if (!open) {
-          setMatchedModalRunId(null)
-          setMatchedFilter("")
-          setMatchedGroupFilter("all")
-        }
-      }}>
-        <DialogContent onClose={() => {
-          setMatchedModalRunId(null)
-          setMatchedFilter("")
-          setMatchedGroupFilter("all")
-        }} className="max-w-6xl h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-600" />
-              Matched Streams
-            </DialogTitle>
-            <DialogDescription>
-              Streams successfully matched to events (Run #{matchedModalRunId})
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Filter controls */}
-          <div className="flex items-center gap-3 pb-2 border-b">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search streams, events, teams..."
-                value={matchedFilter}
-                onChange={(e) => setMatchedFilter(e.target.value)}
-                className="pl-9 h-9"
-              />
-            </div>
-            <select
-              value={matchedGroupFilter}
-              onChange={(e) => setMatchedGroupFilter(e.target.value)}
-              className="h-9 px-3 rounded-md border border-input bg-background text-sm"
-            >
-              <option value="all">All Groups</option>
-              {matchedGroups.map((g) => (
-                <option key={g} value={g}>{g}</option>
-              ))}
-            </select>
-          </div>
-
-          {matchedLoading ? (
-            <div className="flex-1 flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredMatchedStreams.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              {(matchedData?.streams.length ?? 0) === 0
-                ? "No matched streams for this run."
-                : "No streams match your filter."}
-            </div>
-          ) : (
-            <VirtualizedTable<MatchedStream>
-              data={filteredMatchedStreams}
-                getRowKey={(item) => item.id}
-                rowHeight={56}
-                columns={[
-                  {
-                    header: "Stream Name",
-                    width: "flex-1 min-w-0",
-                    render: (stream) => (
-                      <span className="font-medium truncate block" title={stream.stream_name}>
-                        {stream.stream_name}
-                      </span>
-                    ),
-                  },
-                  {
-                    header: "Event",
-                    width: "w-56",
-                    render: (stream) => (
-                      <div>
-                        <div className="truncate" title={stream.event_name || `${stream.away_team} @ ${stream.home_team}`}>
-                          {stream.event_name || `${stream.away_team} @ ${stream.home_team}`}
-                        </div>
-                        {stream.event_date && (
-                          <div className="text-xs text-muted-foreground">
-                            {new Date(stream.event_date).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                    ),
-                  },
-                  {
-                    header: "League",
-                    width: "w-20",
-                    render: (stream) => (
-                      <Badge variant="secondary">{getLeagueDisplay(stream.league)}</Badge>
-                    ),
-                  },
-                  {
-                    header: "Method",
-                    width: "w-28",
-                    render: (stream) => (
-                      <div>
-                        {getMatchMethodBadge(stream.match_method)}
-                        {!!stream.from_cache && stream.match_method !== "cache" && (
-                          <Badge variant="outline" className="ml-1">Cached</Badge>
-                        )}
-                      </div>
-                    ),
-                  },
-                  {
-                    header: "Group",
-                    width: "w-40",
-                    render: (stream) => (
-                      <span className="text-muted-foreground text-sm truncate block" title={stream.group_name ?? undefined}>
-                        {stream.group_name}
-                      </span>
-                    ),
-                  },
-                  {
-                    header: "Fix",
-                    width: "w-12",
-                    render: (stream) => (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleOpenEventMatcher(stream)}
-                        title="Correct this match"
-                      >
-                        <AlertTriangle className="h-4 w-4" />
-                      </Button>
-                    ),
-                  },
-                ]}
-              />
-            )}
-
-          <DialogFooter>
-            <div className="text-sm text-muted-foreground">
-              {filteredMatchedStreams.length === (matchedData?.streams.length ?? 0)
-                ? `${matchedData?.count ?? 0} matched streams`
-                : `${filteredMatchedStreams.length} of ${matchedData?.count ?? 0} streams`}
-            </div>
-            <Button variant="outline" onClick={() => {
-              setMatchedModalRunId(null)
-              setMatchedFilter("")
-              setMatchedGroupFilter("all")
-            }}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Failed Matches Modal */}
-      <Dialog open={failedModalRunId !== null} onOpenChange={(open) => {
-        if (!open) {
-          setFailedModalRunId(null)
-          setFailedFilter("")
-          setFailedGroupFilter("all")
-        }
-      }}>
-        <DialogContent onClose={() => {
-          setFailedModalRunId(null)
-          setFailedFilter("")
-          setFailedGroupFilter("all")
-        }} className="max-w-6xl h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-red-600" />
-              Failed Matches
-            </DialogTitle>
-            <DialogDescription>
-              Streams that failed to match to events (Run #{failedModalRunId})
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Filter controls */}
-          <div className="flex items-center gap-3 pb-2 border-b">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search streams, teams, reasons..."
-                value={failedFilter}
-                onChange={(e) => setFailedFilter(e.target.value)}
-                className="pl-9 h-9"
-              />
-            </div>
-            <select
-              value={failedGroupFilter}
-              onChange={(e) => setFailedGroupFilter(e.target.value)}
-              className="h-9 px-3 rounded-md border border-input bg-background text-sm"
-            >
-              <option value="all">All Groups</option>
-              {failedGroups.map((g) => (
-                <option key={g} value={g}>{g}</option>
-              ))}
-            </select>
-          </div>
-
-          {failedLoading ? (
-            <div className="flex-1 flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredFailedMatches.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              {(failedData?.failures.length ?? 0) === 0
-                ? "No failed matches for this run."
-                : "No streams match your filter."}
-            </div>
-          ) : (
-            <VirtualizedTable<FailedMatch>
-              data={filteredFailedMatches}
-                getRowKey={(item) => item.id}
-                rowHeight={56}
-                columns={[
-                  {
-                    header: "Stream Name",
-                    width: "flex-1 min-w-0",
-                    render: (failure) => (
-                      <span className="font-medium truncate block" title={failure.stream_name}>
-                        {failure.stream_name}
-                      </span>
-                    ),
-                  },
-                  {
-                    header: "Reason",
-                    width: "w-44",
-                    render: (failure) => (
-                      <span className="text-sm">{getFailedReasonLabel(failure.reason)}</span>
-                    ),
-                  },
-                  {
-                    header: "Group",
-                    width: "w-48",
-                    render: (failure) => (
-                      <span className="text-muted-foreground text-sm truncate block" title={failure.group_name ?? undefined}>
-                        {failure.group_name}
-                      </span>
-                    ),
-                  },
-                  {
-                    header: "Fix",
-                    width: "w-12",
-                    render: (failure) => (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleOpenEventMatcher(failure)}
-                        title="Fix this stream's match"
-                      >
-                        <AlertTriangle className="h-4 w-4" />
-                      </Button>
-                    ),
-                  },
-                ]}
-              />
-            )}
-
-          <DialogFooter>
-            <div className="text-sm text-muted-foreground">
-              {filteredFailedMatches.length === (failedData?.failures.length ?? 0)
-                ? `${failedData?.count ?? 0} failed matches`
-                : `${filteredFailedMatches.length} of ${failedData?.count ?? 0} matches`}
-            </div>
-            <Button variant="outline" onClick={() => {
-              setFailedModalRunId(null)
-              setFailedFilter("")
-              setFailedGroupFilter("all")
-            }}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Event Matcher Modal */}
       <Dialog open={eventMatcherOpen} onOpenChange={setEventMatcherOpen}>
