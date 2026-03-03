@@ -952,9 +952,9 @@ def reorder_groups_endpoint(request: ReorderGroupsRequest):
             detail="No groups provided for reordering",
         )
 
-    conn = get_db()
-    items = [(g.sort_order, g.group_id) for g in request.groups]
-    updated = reorder_groups(conn, items)
+    with get_db() as conn:
+        items = [(g.sort_order, g.group_id) for g in request.groups]
+        updated = reorder_groups(conn, items)
 
     return ReorderGroupsResponse(
         success=True,

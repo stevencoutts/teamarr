@@ -716,7 +716,7 @@ export function EventGroups() {
             <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-5 px-0"></TableHead>
+                  <TableHead className="w-6 px-0"></TableHead>
                   <TableHead className="w-10">
                     <Checkbox
                       checked={selectedIds.size === sortedGroups.length && sortedGroups.length > 0}
@@ -766,7 +766,7 @@ export function EventGroups() {
                 </TableRow>
                 {/* Filter row */}
                 <TableRow className="border-b-2 border-border">
-                  <TableHead className="py-0.5 pb-1.5 px-0"></TableHead>
+                  <TableHead className="py-0.5 pb-1.5 w-6 px-0"></TableHead>
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
                   <TableHead className="py-0.5 pb-1.5">
                     <div className="relative">
@@ -830,8 +830,8 @@ export function EventGroups() {
                         onDrop={(e) => isDndActive && handleDrop(e, group.id)}
                         onDragEnd={handleDragEnd}
                       >
-                        <TableCell className="px-0 w-5">
-                          <div className={`flex items-center justify-center ${
+                        <TableCell className="px-0 w-6">
+                          <div className={`flex items-center justify-center transition-opacity ${
                             isDndActive ? "cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground" : "opacity-0 pointer-events-none"
                           }`}>
                             <GripVertical className="h-4 w-4" />
