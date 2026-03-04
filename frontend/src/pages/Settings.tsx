@@ -1730,7 +1730,7 @@ export function Settings() {
                 }
               >
                 <option value="same_day">Same day</option>
-                <option value="before_event">Before event</option>
+                <option value="before_event">Before event + buffer</option>
               </Select>
               <Label htmlFor="ch-pre-buffer" className={lifecycle?.channel_create_timing !== "before_event" ? "text-muted-foreground" : ""}>
                 Pre-Event Buffer (hours)
@@ -1750,7 +1750,9 @@ export function Settings() {
                 }}
               />
               <p className="text-xs text-muted-foreground">
-                Hours before event start to create channel
+                {lifecycle?.channel_create_timing === "before_event"
+                  ? "Hours before event start to create channel"
+                  : "\u00A0"}
               </p>
             </div>
             <div className="space-y-2">
@@ -1763,13 +1765,8 @@ export function Settings() {
                 }
               >
                 <option value="same_day">Same day</option>
-                <option value="after_event">After event</option>
+                <option value="after_event">After event + buffer</option>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                {lifecycle?.channel_delete_timing === "after_event"
-                  ? "Channel deleted after event ends by the buffer below"
-                  : "Midnight cross-over events will use post-event buffer"}
-              </p>
               <Label htmlFor="ch-post-buffer">Post-Event Buffer (hours)</Label>
               <Input
                 id="ch-post-buffer"
@@ -1785,7 +1782,9 @@ export function Settings() {
                 }}
               />
               <p className="text-xs text-muted-foreground">
-                Hours after event ends to delete channel
+                {lifecycle?.channel_delete_timing === "after_event"
+                  ? "Hours after event ends to delete channel"
+                  : "Midnight cross-over events will always use post-event buffer"}
               </p>
             </div>
           </div>
