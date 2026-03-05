@@ -74,6 +74,17 @@ class DynamicResolver:
                 if alias:
                     self._league_aliases[row["league_code"]] = alias
 
+            # Fallback: discovered leagues from league_cache (not in static leagues table)
+            cursor = self._db_conn.execute(
+                "SELECT league_slug, league_name FROM league_cache"
+            )
+            for row in cursor.fetchall():
+                slug = row["league_slug"]
+                if slug not in self._league_display_names and row["league_name"]:
+                    self._league_display_names[slug] = row["league_name"]
+                if slug not in self._league_aliases and row["league_name"]:
+                    self._league_aliases[slug] = row["league_name"]
+
         # Load existing Dispatcharr groups and profiles
         dispatcharr = self._get_dispatcharr()
         if dispatcharr:

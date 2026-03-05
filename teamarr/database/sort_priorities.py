@@ -356,9 +356,13 @@ def get_sort_priorities_with_channel_counts(
     # Get sport display names
     sport_names = get_sport_display_names_from_db(conn)
 
-    # Get league display names
+    # Get league display names (configured leagues, then discovered fallback)
     cursor = conn.execute("SELECT league_code, display_name FROM leagues")
     league_names = {row["league_code"]: row["display_name"] for row in cursor.fetchall()}
+    cursor = conn.execute("SELECT league_slug, league_name FROM league_cache")
+    for row in cursor.fetchall():
+        if row["league_slug"] not in league_names and row["league_name"]:
+            league_names[row["league_slug"]] = row["league_name"]
 
     # Get channel counts per sport/league
     cursor = conn.execute("""
