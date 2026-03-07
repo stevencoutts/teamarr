@@ -408,11 +408,16 @@ class StreamMatcher:
 
                 # Cache-only rules:
                 # - TSDB: always cache-only
-                # - Past days: always cache-only
+                # - Older past (2+ days): always cache-only
+                # - Yesterday: fetch from API (today's 30min TTL expires
+                #   before next day's run can use it as cache)
                 # - Future days: only fetch from API for group's configured leagues
                 # - Today: fetch from API for group's leagues, cache for others
-                if is_tsdb or offset < 0:
+                if is_tsdb or offset < -1:
                     cache_only = True
+                elif offset == -1:
+                    # Yesterday: fetch from API for group's leagues
+                    cache_only = not is_group_league
                 elif offset > 0:
                     # Future days: only fetch from API for group's leagues
                     cache_only = not is_group_league
