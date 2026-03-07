@@ -16,6 +16,7 @@ Usage:
 """
 
 import logging
+import re
 import sqlite3
 
 logger = logging.getLogger(__name__)
@@ -685,14 +686,85 @@ def _normalize_data_v43(conn: sqlite3.Connection) -> None:
 
             if has_check_constraint:
                 # Table has CHECK constraint - must recreate table to remove it
-                # Import and use the proper migration function from connection.py
-                from teamarr.database.connection import _migrate_channel_group_mode_to_patterns
-
+                # Inline the table recreation (self-contained, no external imports)
                 logger.info("[CHECKPOINT] Recreating event_epg_groups to remove CHECK constraint")
-                _migrate_channel_group_mode_to_patterns(conn)
-                # Restore FK state — the migration function re-enables foreign keys
-                # in its finally block, but the checkpoint needs them OFF for Phase 5
-                conn.execute("PRAGMA foreign_keys = OFF")
+
+                conn.execute("DROP TABLE IF EXISTS event_epg_groups_new")
+
+                # Get current columns, filter out legacy ones that won't exist in new table
+                all_cols = list(_get_table_columns(conn, "event_epg_groups"))
+                legacy = {"stream_profile_id", "team_filter_enabled"}
+                cols = [c for c in all_cols if c not in legacy]
+
+                # Build SELECT with CASE conversions for enum columns
+                select_exprs = []
+                for c in cols:
+                    if c == "channel_group_mode":
+                        select_exprs.append(
+                            "CASE channel_group_mode "
+                            "WHEN 'sport' THEN '{sport}' "
+                            "WHEN 'league' THEN '{league}' "
+                            "ELSE channel_group_mode END"
+                        )
+                    elif c == "channel_assignment_mode":
+                        select_exprs.append(
+                            "CASE "
+                            "WHEN channel_assignment_mode = 'one_per_stream' "
+                            "THEN 'manual' "
+                            "WHEN channel_assignment_mode IN ('auto','manual') "
+                            "THEN channel_assignment_mode "
+                            "ELSE 'auto' END"
+                        )
+                    elif c == "channel_sort_order":
+                        select_exprs.append(
+                            "CASE "
+                            "WHEN channel_sort_order "
+                            "IN ('time','sport_time','league_time') "
+                            "THEN channel_sort_order "
+                            "ELSE 'time' END"
+                        )
+                    elif c == "overlap_handling":
+                        select_exprs.append(
+                            "CASE "
+                            "WHEN overlap_handling "
+                            "IN ('add_stream','add_only','create_all','skip') "
+                            "THEN overlap_handling "
+                            "ELSE 'add_stream' END"
+                        )
+                    else:
+                        select_exprs.append(c)
+
+                # Strip the CHECK constraint on channel_group_mode
+                new_sql = re.sub(
+                    r"\s*CHECK\s*\(\s*channel_group_mode\s+IN\s*\([^)]+\)\s*\)",
+                    "",
+                    table_sql,
+                )
+                # Point it at the new table name
+                new_sql = new_sql.replace(
+                    "CREATE TABLE event_epg_groups",
+                    "CREATE TABLE event_epg_groups_new",
+                    1,
+                )
+                conn.execute(new_sql)
+
+                col_list = ", ".join(cols)
+                sel_list = ", ".join(select_exprs)
+                conn.execute(
+                    f"INSERT INTO event_epg_groups_new ({col_list}) "
+                    f"SELECT {sel_list} FROM event_epg_groups"
+                )
+                conn.execute("DROP TABLE event_epg_groups")
+                conn.execute("ALTER TABLE event_epg_groups_new RENAME TO event_epg_groups")
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_event_epg_groups_parent
+                    ON event_epg_groups(parent_group_id)
+                """)
+                conn.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_event_epg_groups_name_account
+                    ON event_epg_groups(name, COALESCE(m3u_account_id, -1))
+                """)
+                conn.commit()
                 # Table recreation handles all column conversions, skip remaining UPDATEs
             else:
                 # No CHECK constraint - safe to UPDATE in place
