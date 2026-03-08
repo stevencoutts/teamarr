@@ -2,12 +2,12 @@
 title: Supported Leagues
 parent: Technical Reference
 nav_order: 1
-docs_version: "2.3.0"
+docs_version: "2.4.0"
 ---
 
 # Supported Sports & Leagues
 
-Teamarr supports **96 pre-configured leagues** across 13 sports, plus **280+ dynamically discovered soccer leagues** from ESPN. Pre-configured leagues have full support (team import + event matching). Discovered leagues support event matching only.
+Teamarr supports **97 pre-configured leagues** across 13 sports, plus **280+ dynamically discovered soccer leagues** from ESPN. Pre-configured leagues have full support (team import + event matching). Discovered leagues support event matching only.
 
 ## Support Levels
 
@@ -28,9 +28,18 @@ Leagues have different levels of support:
 |----------|-------------|
 | **ESPN** | Primary provider for most US leagues and international soccer. Discovers 280+ soccer leagues dynamically. |
 | **MLB Stats API** | Minor League Baseball (MiLB) — Triple-A, Double-A, High-A, Single-A, Rookie |
-| **TheSportsDB** | Australian sports, rugby, cricket teams, boxing, CFL, Norwegian hockey |
+| **TheSportsDB** | Australian sports, rugby, cricket, boxing, CFL, Scandinavian leagues. Free and [premium tiers](providers/tsdb.md). |
 | **HockeyTech** | Canadian and US junior/minor hockey leagues (CHL, AHL, ECHL, PWHL, USHL, Junior A) |
-| **Cricbuzz** | Cricket schedules (fallback for TSDB cricket) |
+| **Cricbuzz** | Cricket schedules (free-tier fallback when TSDB premium key not configured) |
+
+### TSDB Tier Legend
+
+TSDB leagues are classified by tier. Most work on the free tier. Leagues marked with a crown (**P**) require a [premium API key](providers/tsdb.md) for full event coverage.
+
+| Tier | Meaning |
+|------|---------|
+| TSDB | Works on free tier (low event volume) |
+| TSDB **P** | Requires premium key for full coverage |
 
 ---
 
@@ -204,6 +213,12 @@ Teamarr automatically discovers **280+ soccer leagues** from ESPN's API during c
 | CONCACAF Gold Cup | `gold-cup` | ESPN |
 | CONCACAF Nations League | `cnl` | ESPN |
 
+### Scandinavia
+
+| League | ID | Provider |
+|--------|-----|----------|
+| Svenska Cupen (Sweden) | `svenska-cupen` | TSDB **P** |
+
 ### Asia/Pacific
 
 | League | ID | Provider |
@@ -231,12 +246,12 @@ Combat sports use "Event Card" matching rather than team vs team matching.
 
 | League | ID | Provider | Fallback |
 |--------|-----|----------|----------|
-| Indian Premier League | `ipl` | TSDB | Cricbuzz |
-| Big Bash League | `bbl` | TSDB | Cricbuzz |
-| SA20 | `sa20` | TSDB | Cricbuzz |
+| Indian Premier League | `ipl` | TSDB **P** | Cricbuzz |
+| Big Bash League | `bbl` | TSDB **P** | Cricbuzz |
+| SA20 | `sa20` | TSDB **P** | Cricbuzz |
 
 {: .note }
-Cricket uses TSDB for team data and Cricbuzz as a fallback for schedules.
+Cricket leagues are TSDB premium tier. Without a premium key, Teamarr uses Cricbuzz for schedules (TSDB still provides team data and logos). With a premium key, TSDB handles everything directly.
 
 ---
 

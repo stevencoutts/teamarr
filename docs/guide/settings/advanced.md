@@ -71,14 +71,18 @@ Cache refresh runs automatically on first startup. Manual refresh is useful afte
 
 ## TheSportsDB API Key
 
-Optional premium API key for higher rate limits on TheSportsDB.
+Optional premium API key for TheSportsDB. The card header shows your current tier (Free Tier / Premium).
 
-| Tier | Rate Limit | Result Limits |
-|------|------------|---------------|
-| **Free** | 30 requests/min | Lower |
-| **Premium** ($9/mo) | 100 requests/min | Higher |
+| Tier | Rate Limit | Events per Query | Cost |
+|------|------------|-----------------|------|
+| **Free** | 30 req/min | 5 per day per league | Free |
+| **Premium** | 100 req/min | Full coverage | ~$9/mo |
 
-The free tier works for most users. Get a premium key at [thesportsdb.com/pricing](https://www.thesportsdb.com/pricing).
+Most TSDB leagues (CFL, AFL, NRL, boxing, etc.) work fine on the free tier. Premium leagues — cricket (IPL, BBL, SA20) and high-volume soccer cups (Svenska Cupen) — need a premium key for full event coverage. The league picker shows a crown icon on premium leagues.
+
+Use the **Validate** button to test your key before saving. Get a key at [thesportsdb.com/pricing](https://www.thesportsdb.com/pricing).
+
+See [TSDB Provider](../../reference/providers/tsdb.md) for technical details.
 
 ## XMLTV Generator Metadata
 
