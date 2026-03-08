@@ -89,13 +89,7 @@ export interface TSDBKeyValidationResult {
 }
 
 export async function validateTSDBKey(apiKey: string): Promise<TSDBKeyValidationResult> {
-  const res = await fetch("/api/settings/tsdb/validate-key", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ api_key: apiKey }),
-  })
-  if (!res.ok) throw new Error(`Validation failed: ${res.status}`)
-  return res.json()
+  return api.post("/settings/tsdb/validate-key", { api_key: apiKey })
 }
 
 export interface TeamFilterEntry {

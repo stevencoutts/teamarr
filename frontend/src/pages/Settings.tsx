@@ -1130,11 +1130,11 @@ export function Settings() {
     }
   }
 
-  const handleSaveDisplay = async () => {
+  const handleSaveDisplay = async (message?: string) => {
     if (!display) return
     try {
       await updateDisplay.mutateAsync(display)
-      toast.success("Display settings saved")
+      toast.success(message || "Display settings saved")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save")
     }
@@ -3230,7 +3230,7 @@ export function Settings() {
             </p>
           </div>
 
-          <Button onClick={handleSaveDisplay} disabled={updateDisplay.isPending}>
+          <Button onClick={() => handleSaveDisplay("TSDB API key saved")} disabled={updateDisplay.isPending}>
             {updateDisplay.isPending ? (
               <Loader2 className="h-4 w-4 mr-1 animate-spin" />
             ) : (
@@ -3268,7 +3268,7 @@ export function Settings() {
             </div>
           </div>
 
-          <Button onClick={handleSaveDisplay} disabled={updateDisplay.isPending}>
+          <Button onClick={() => handleSaveDisplay("XMLTV metadata saved")} disabled={updateDisplay.isPending}>
             {updateDisplay.isPending ? (
               <Loader2 className="h-4 w-4 mr-1 animate-spin" />
             ) : (
