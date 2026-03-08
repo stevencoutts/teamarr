@@ -44,8 +44,21 @@ def _parse_leagues(leagues_str: str | None) -> list[str]:
         return []
 
 
-def _generate_channel_id(conn: Connection, team_name: str, primary_league: str) -> str:
-    """Generate channel ID from team name and league."""
+_TBD_NAMES = {"tbd", "tbd tbd"}
+
+
+def _generate_channel_id(
+    conn: Connection,
+    team_name: str,
+    primary_league: str,
+    provider_team_id: str,
+    used_ids: set[str],
+) -> str:
+    """Generate a unique channel ID from team name and league.
+
+    If the base channel_id collides with an existing DB row or an ID already
+    used in this import batch, appends the provider_team_id to disambiguate.
+    """
     from teamarr.database.leagues import get_league_id
 
     name = "".join(
@@ -53,7 +66,17 @@ def _generate_channel_id(conn: Connection, team_name: str, primary_league: str) 
         for word in "".join(c if c.isalnum() or c.isspace() else "" for c in team_name).split()
     )
     league_id = get_league_id(conn, primary_league)
-    return f"{name}.{league_id}"
+    base_id = f"{name}.{league_id}"
+
+    if base_id not in used_ids:
+        row = conn.execute(
+            "SELECT 1 FROM teams WHERE channel_id = ?", (base_id,)
+        ).fetchone()
+        if not row:
+            return base_id
+
+    # Collision — disambiguate with provider team ID
+    return f"{base_id}.{provider_team_id}"
 
 
 def bulk_import_teams(conn: Connection, teams: list[ImportTeam]) -> ImportResult:
@@ -74,9 +97,18 @@ def bulk_import_teams(conn: Connection, teams: list[ImportTeam]) -> ImportResult
     Returns:
         ImportResult with counts of imported, updated, skipped
     """
+    # Filter out TBD placeholder teams (ESPN data quality issue)
+    original_count = len(teams)
+    teams = [t for t in teams if t.team_name.strip().lower() not in _TBD_NAMES]
+    if len(teams) < original_count:
+        logger.info(
+            "[BULK_IMPORT] Filtered %d TBD placeholder teams", original_count - len(teams)
+        )
+
     imported = 0
     updated = 0
     skipped = 0
+    used_ids: set[str] = set()  # Track channel_ids used in this batch
 
     # Build two indexes for existing teams:
     # 1. Full key (provider, id, sport, league) - for exact lookups
@@ -150,7 +182,9 @@ def bulk_import_teams(conn: Connection, teams: list[ImportTeam]) -> ImportResult
                     updated += 1
             else:
                 # Create new soccer team
-                channel_id = _generate_channel_id(conn, team.team_name, team.league)
+                channel_id = _generate_channel_id(
+                    conn, team.team_name, team.league, team.provider_team_id, used_ids
+                )
                 leagues_json = json.dumps(sorted(all_leagues))
                 cursor = conn.execute(
                     """
@@ -171,6 +205,7 @@ def bulk_import_teams(conn: Connection, teams: list[ImportTeam]) -> ImportResult
                         channel_id,
                     ),
                 )
+                used_ids.add(channel_id)
                 new_id = cursor.lastrowid
                 existing_full[full_key] = (new_id, all_leagues)
                 existing_sport[sport_key] = [(new_id, team.league, all_leagues)]
@@ -181,7 +216,9 @@ def bulk_import_teams(conn: Connection, teams: list[ImportTeam]) -> ImportResult
             if full_key in existing_full:
                 skipped += 1
             else:
-                channel_id = _generate_channel_id(conn, team.team_name, team.league)
+                channel_id = _generate_channel_id(
+                    conn, team.team_name, team.league, team.provider_team_id, used_ids
+                )
                 leagues_json = json.dumps([team.league])
                 cursor = conn.execute(
                     """
@@ -202,6 +239,7 @@ def bulk_import_teams(conn: Connection, teams: list[ImportTeam]) -> ImportResult
                         channel_id,
                     ),
                 )
+                used_ids.add(channel_id)
                 new_id = cursor.lastrowid
                 existing_full[full_key] = (new_id, [team.league])
                 if sport_key not in existing_sport:
