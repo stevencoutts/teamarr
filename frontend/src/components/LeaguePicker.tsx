@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Loader2, Check, ChevronRight, ChevronDown } from "lucide-react"
+import { Loader2, Check, ChevronRight, ChevronDown, Crown } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -9,6 +9,7 @@ import { cn, getSportDisplayName, getLeagueDisplayName } from "@/lib/utils"
 import { SelectedBadges, type BadgeItem } from "@/components/ui/selected-badges"
 import type { CachedLeague } from "@/api/teams"
 import { getLeagues, getSports } from "@/api/teams"
+import { useDisplaySettings } from "@/hooks/useSettings"
 
 interface LeaguePickerProps {
   selectedLeagues: string[]
@@ -52,6 +53,10 @@ export function LeaguePicker({
   })
   const sportsMap = sportsResponse?.sports
 
+  // Check if TSDB premium key is configured
+  const { data: displaySettings } = useDisplaySettings()
+  const hasPremiumKey = !!(displaySettings?.tsdb_api_key && displaySettings.tsdb_api_key.length > 3)
+
   // Convert to Set for easier operations
   const selectedSet = useMemo(() => new Set(selectedLeagues), [selectedLeagues])
 
@@ -78,6 +83,15 @@ export function LeaguePicker({
   }, [cachedLeagues, sportFilter, excludeSport])
 
   const sports = Object.keys(leaguesBySport).sort()
+
+  // Check if any selected premium leagues lack a configured key
+  const selectedPremiumWithoutKey = useMemo(() => {
+    if (hasPremiumKey || !cachedLeagues) return false
+    return selectedLeagues.some(slug => {
+      const league = cachedLeagues.find(l => l.slug === slug)
+      return league?.tsdb_tier === "premium"
+    })
+  }, [selectedLeagues, cachedLeagues, hasPremiumKey])
 
   // Select a league (single or multi mode)
   const selectLeague = (slug: string) => {
@@ -212,6 +226,14 @@ export function LeaguePicker({
           maxBadges={maxBadges}
           onRemove={(slug) => selectLeague(slug)}
         />
+      )}
+
+      {/* Premium key warning */}
+      {selectedPremiumWithoutKey && (
+        <div className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded px-3 py-2">
+          <Crown className="h-3 w-3 inline mr-1" />
+          Premium leagues need a TSDB API key for full event coverage. Add one in Settings &gt; System.
+        </div>
       )}
 
       {/* League picker by sport */}
@@ -349,6 +371,11 @@ export function LeaguePicker({
                             <img src={league.logo_url} alt="" className="h-4 w-4 object-contain" />
                           )}
                           <span className="truncate">{getLeagueDisplayName(league, true)}</span>
+                          {league.tsdb_tier === "premium" && (
+                            <span title="Requires TSDB premium key">
+                              <Crown className="h-3 w-3 text-amber-500 shrink-0" />
+                            </span>
+                          )}
                         </label>
                       )
                     })}
