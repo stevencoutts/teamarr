@@ -3175,7 +3175,12 @@ export function Settings() {
       {/* TheSportsDB API Key */}
       <Card>
         <CardHeader>
-          <CardTitle>TheSportsDB API Key</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>TheSportsDB API Key</CardTitle>
+            <Badge variant={display?.tsdb_api_key && display.tsdb_api_key.length > 3 ? "default" : "secondary"} className="text-xs">
+              {display?.tsdb_api_key && display.tsdb_api_key.length > 3 ? "Premium" : "Free Tier"}
+            </Badge>
+          </div>
           <CardDescription>Optional premium API key for full event coverage and higher rate limits</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
