@@ -178,6 +178,13 @@ def update_display_settings_endpoint(update: DisplaySettingsModel):
         xmltv_generator_url=update.xmltv_generator_url,
     )
 
+    # Reinitialize TSDB provider so it picks up the new API key
+    # without requiring a restart. The factory re-reads the key from DB.
+    if update.tsdb_api_key is not None:
+        from teamarr.providers.registry import ProviderRegistry
+
+        ProviderRegistry.reinitialize_provider("tsdb")
+
     from teamarr.database.settings.read import get_tsdb_api_key
 
     with get_db() as conn:

@@ -168,6 +168,23 @@ class ProviderRegistry:
             config.reset_instance()
 
     @classmethod
+    def reinitialize_provider(cls, name: str) -> bool:
+        """Reinitialize a specific provider by resetting its cached instance.
+
+        The next call to get() or get_all() will recreate the provider
+        via its factory function, picking up any changed configuration
+        (e.g., a new API key from the database).
+
+        Returns True if the provider was found and reset, False otherwise.
+        """
+        config = cls._providers.get(name)
+        if config is None:
+            return False
+        config.reset_instance()
+        logger.info("[REGISTRY] Reinitialized provider: %s", name)
+        return True
+
+    @classmethod
     def provider_names(cls) -> list[str]:
         """Get list of registered provider names."""
         return list(cls._providers.keys())
