@@ -90,6 +90,7 @@ class TeamEPGGenerator:
         channel_id: str,
         team_name: str,
         team_abbrev: str | None = None,
+        team_short_name: str | None = None,
         logo_url: str | None = None,
         options: TeamEPGOptions | None = None,
         provider: str = "espn",
@@ -111,6 +112,7 @@ class TeamEPGGenerator:
             channel_id: XMLTV channel ID
             team_name: Display name for the team
             team_abbrev: Team abbreviation
+            team_short_name: Team short name (e.g., "Lions", "Liverpool")
             logo_url: Team/channel logo URL
             options: Generation options
             provider: Data provider ('espn' or 'tsdb')
@@ -140,6 +142,7 @@ class TeamEPGGenerator:
             channel_id=channel_id,
             team_name=team_name,
             team_abbrev=team_abbrev,
+            team_short_name=team_short_name,
             logo_url=logo_url,
             options=options,
             additional_leagues=additional_leagues,
@@ -152,6 +155,7 @@ class TeamEPGGenerator:
         channel_id: str,
         team_name: str,
         team_abbrev: str | None = None,
+        team_short_name: str | None = None,
         logo_url: str | None = None,
         options: TeamEPGOptions | None = None,
         additional_leagues: list[str] | None = None,
@@ -164,6 +168,7 @@ class TeamEPGGenerator:
             channel_id: XMLTV channel ID
             team_name: Display name for the team
             team_abbrev: Team abbreviation (e.g., "DET")
+            team_short_name: Team short name (e.g., "Lions")
             logo_url: Team/channel logo URL
             options: Generation options including templates
             additional_leagues: Extra leagues to fetch schedule from (for multi-league teams)
@@ -244,6 +249,16 @@ class TeamEPGGenerator:
 
         # Sort events by time to determine next/last relationships
         sorted_events = sorted(all_events, key=lambda e: e.start_time)
+
+        # Derive team_short_name from events if not provided
+        if team_short_name is None and sorted_events:
+            for ev in sorted_events:
+                if ev.home_team.id == team_id:
+                    team_short_name = ev.home_team.short_name
+                    break
+                if ev.away_team.id == team_id:
+                    team_short_name = ev.away_team.short_name
+                    break
 
         # Calculate output window
         now = now_user()
@@ -340,6 +355,7 @@ class TeamEPGGenerator:
                 channel_id=channel_id,
                 team_name=team_name,
                 team_abbrev=team_abbrev,
+                team_short_name=team_short_name,
                 logo_url=logo_url,
                 team_stats=team_stats,
                 options=options,
@@ -450,6 +466,7 @@ class TeamEPGGenerator:
         channel_id: str,
         team_name: str,
         team_abbrev: str | None,
+        team_short_name: str | None,
         logo_url: str | None,
         team_stats,
         options: TeamEPGOptions,
@@ -490,6 +507,7 @@ class TeamEPGGenerator:
             channel_id=channel_id,
             team_name=team_name,
             team_abbrev=team_abbrev,
+            team_short_name=team_short_name,
             logo_url=logo_url,
             team_stats=team_stats,
             options=filler_options,

@@ -369,6 +369,7 @@ class EventFillerGenerator:
             sport=event.sport,
             team_name=event.home_team.name,
             team_abbrev=event.home_team.abbreviation,
+            team_short_name=event.home_team.short_name,
         )
 
         # Fetch team stats if service is available

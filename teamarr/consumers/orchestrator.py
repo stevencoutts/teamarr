@@ -27,6 +27,7 @@ class TeamChannelConfig:
     channel_id: str
     team_name: str
     team_abbrev: str | None = None
+    team_short_name: str | None = None
     logo_url: str | None = None
     # Template config (optional - uses defaults if not set)
     title_format: str | None = None
@@ -86,6 +87,7 @@ class Orchestrator:
                 channel_id=config.channel_id,
                 team_name=config.team_name,
                 team_abbrev=config.team_abbrev,
+                team_short_name=config.team_short_name,
                 logo_url=config.logo_url,
                 options=team_options,
             )

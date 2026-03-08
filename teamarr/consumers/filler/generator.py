@@ -71,6 +71,7 @@ class FillerGenerator:
         channel_id: str,
         team_name: str,
         team_abbrev: str | None = None,
+        team_short_name: str | None = None,
         logo_url: str | None = None,
         team_stats: TeamStats | None = None,
         options: FillerOptions | None = None,
@@ -117,6 +118,7 @@ class FillerGenerator:
             sport=sport,
             team_name=team_name,
             team_abbrev=team_abbrev,
+            team_short_name=team_short_name,
         )
 
         # Generate fillers day by day

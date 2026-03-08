@@ -19,6 +19,7 @@ class TeamChannelConfig:
     team_name: str
     channel_id: str
     team_abbrev: str | None = None
+    team_short_name: str | None = None
     logo_url: str | None = None
     title_format: str | None = None
     subtitle_format: str | None = None
@@ -99,6 +100,7 @@ class EPGService:
                 team_name=c.team_name,
                 channel_id=c.channel_id,
                 team_abbrev=c.team_abbrev,
+                team_short_name=c.team_short_name,
                 logo_url=c.logo_url,
                 title_format=c.title_format,
                 subtitle_format=c.subtitle_format,

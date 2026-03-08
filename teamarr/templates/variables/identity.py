@@ -74,6 +74,16 @@ def extract_team_abbrev_lower(ctx: TemplateContext, game_ctx: GameContext | None
 
 
 @register_variable(
+    name="team_short",
+    category=Category.IDENTITY,
+    suffix_rules=SuffixRules.BASE_ONLY,
+    description="Team short name (e.g., 'Lions', 'Liverpool')",
+)
+def extract_team_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    return ctx.team_config.team_short_name or ""
+
+
+@register_variable(
     name="team_name_pascal",
     category=Category.IDENTITY,
     suffix_rules=SuffixRules.BASE_ONLY,
@@ -117,6 +127,17 @@ def extract_opponent_abbrev_lower(ctx: TemplateContext, game_ctx: GameContext | 
 
 
 @register_variable(
+    name="opponent_short",
+    category=Category.IDENTITY,
+    suffix_rules=SuffixRules.ALL,
+    description="Opponent short name (e.g., 'Bears', 'Arsenal')",
+)
+def extract_opponent_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    opponent = _get_opponent(ctx, game_ctx)
+    return opponent.short_name if opponent else ""
+
+
+@register_variable(
     name="matchup",
     category=Category.IDENTITY,
     suffix_rules=SuffixRules.ALL,
@@ -140,6 +161,19 @@ def extract_matchup_abbrev(ctx: TemplateContext, game_ctx: GameContext | None) -
         return ""
     event = game_ctx.event
     return f"{event.away_team.abbreviation.upper()} @ {event.home_team.abbreviation.upper()}"
+
+
+@register_variable(
+    name="matchup_short",
+    category=Category.IDENTITY,
+    suffix_rules=SuffixRules.ALL,
+    description="Short name matchup (e.g., 'Buccaneers @ Lions')",
+)
+def extract_matchup_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    if not game_ctx or not game_ctx.event:
+        return ""
+    event = game_ctx.event
+    return f"{event.away_team.short_name} @ {event.home_team.short_name}"
 
 
 @register_variable(

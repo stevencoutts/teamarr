@@ -128,6 +128,30 @@ def extract_away_team(ctx: TemplateContext, game_ctx: GameContext | None) -> str
 
 
 @register_variable(
+    name="home_team_short",
+    category=Category.HOME_AWAY,
+    suffix_rules=SuffixRules.ALL,
+    description="Home team short name (e.g., 'Lions')",
+)
+def extract_home_team_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    if not game_ctx or not game_ctx.event:
+        return ""
+    return game_ctx.event.home_team.short_name
+
+
+@register_variable(
+    name="away_team_short",
+    category=Category.HOME_AWAY,
+    suffix_rules=SuffixRules.ALL,
+    description="Away team short name (e.g., 'Bears')",
+)
+def extract_away_team_short(ctx: TemplateContext, game_ctx: GameContext | None) -> str:
+    if not game_ctx or not game_ctx.event:
+        return ""
+    return game_ctx.event.away_team.short_name
+
+
+@register_variable(
     name="home_team_abbrev",
     category=Category.HOME_AWAY,
     suffix_rules=SuffixRules.ALL,

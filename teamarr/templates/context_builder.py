@@ -72,6 +72,7 @@ class ContextBuilder:
             sport=event.sport,
             team_name=team.name,
             team_abbrev=team.abbreviation,
+            team_short_name=team.short_name,
         )
 
         # Fetch team stats if not provided
@@ -118,6 +119,7 @@ class ContextBuilder:
         league: str,
         team_name: str,
         team_abbrev: str | None = None,
+        team_short_name: str | None = None,
     ) -> TemplateContext:
         """Build minimal context without game info.
 
@@ -129,6 +131,7 @@ class ContextBuilder:
             sport=self._get_sport(league),
             team_name=team_name,
             team_abbrev=team_abbrev,
+            team_short_name=team_short_name,
         )
 
         team_stats = self._get_team_stats(team_id, league)

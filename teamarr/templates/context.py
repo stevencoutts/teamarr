@@ -55,6 +55,7 @@ class TeamChannelContext:
     sport: str
     team_name: str
     team_abbrev: str | None = None
+    team_short_name: str | None = None
     team_logo_url: str | None = None
     league_name: str | None = None  # "NFL", "NBA", etc.
     channel_id: str | None = None
