@@ -1702,8 +1702,11 @@ def get_raw_streams(group_id: int):
         if is_placeholder(name):
             return "placeholder"
         sport = detect_sport_hint(name)
-        if sport and sport in UNSUPPORTED_SPORTS:
-            return f"unsupported_sport:{sport}"
+        if sport:
+            hints = [sport] if isinstance(sport, str) else sport
+            for s in hints:
+                if s in UNSUPPORTED_SPORTS:
+                    return f"unsupported_sport:{s}"
         if not is_event_stream(name):
             return "not_event"
         return None
