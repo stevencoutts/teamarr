@@ -128,6 +128,10 @@ def init_db(db_path: Path | str | None = None) -> None:
             # (schema.sql INSERT OR REPLACE references these columns)
             _add_fallback_columns_if_needed(conn)
 
+            # Pre-migration: add tsdb_tier column before schema.sql runs
+            # (schema.sql INSERT OR REPLACE references tsdb_tier column)
+            _add_tsdb_tier_column_if_needed(conn)
+
             # Pre-migration: rename exception keywords columns before schema.sql runs
             # (schema.sql INSERT OR IGNORE references label and match_terms columns)
             _migrate_exception_keywords_columns(conn)
@@ -332,6 +336,23 @@ def _add_fallback_columns_if_needed(conn: sqlite3.Connection) -> None:
     if "fallback_league_id" not in columns:
         conn.execute("ALTER TABLE leagues ADD COLUMN fallback_league_id TEXT")
         logger.info("[MIGRATE] Added leagues.fallback_league_id column")
+
+
+def _add_tsdb_tier_column_if_needed(conn: sqlite3.Connection) -> None:
+    """Add tsdb_tier column if it doesn't exist.
+
+    MUST run before schema.sql because INSERT OR REPLACE references this column.
+    """
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='leagues'")
+    if not cursor.fetchone():
+        return  # Fresh database, schema.sql will create table with correct column
+
+    cursor = conn.execute("PRAGMA table_info(leagues)")
+    columns = {row["name"] for row in cursor.fetchall()}
+
+    if "tsdb_tier" not in columns:
+        conn.execute("ALTER TABLE leagues ADD COLUMN tsdb_tier TEXT")
+        logger.info("[MIGRATE] Added leagues.tsdb_tier column")
 
 
 def _migrate_exception_keywords_columns(conn: sqlite3.Connection) -> None:
