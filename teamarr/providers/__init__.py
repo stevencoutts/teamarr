@@ -152,16 +152,16 @@ ProviderRegistry.register(
     name="cricbuzz",
     provider_class=CricbuzzProvider,
     factory=_create_cricbuzz_provider,
-    priority=60,  # Cricket - direct Cricbuzz (rarely used standalone)
-    enabled=False,  # Disabled - use cricket_hybrid instead
+    priority=60,  # DEPRECATED: Only used internally by cricket_hybrid
+    enabled=False,
 )
 
 ProviderRegistry.register(
     name="cricket_hybrid",
     provider_class=CricketHybridProvider,
     factory=_create_cricket_hybrid_provider,
-    priority=55,  # Cricket leagues - TSDB teams + Cricbuzz events
-    enabled=True,
+    priority=55,  # DEPRECATED: Free-tier fallback only. When TSDB has premium key,
+    enabled=True,  # cricket_hybrid declines and TSDB handles cricket directly.
 )
 
 ProviderRegistry.register(

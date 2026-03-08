@@ -1,4 +1,4 @@
-"""Cricket hybrid provider implementation.
+"""Cricket hybrid provider implementation (DEPRECATED — free tier fallback only).
 
 Combines:
 - TSDB: Team info, logos (from team_cache database)
@@ -6,6 +6,10 @@ Combines:
 
 This abstraction lets the service layer treat cricket as a single provider,
 unaware that data flows from multiple sources underneath.
+
+DEPRECATED: When a premium TSDB key is configured, cricket leagues route
+directly to the TSDB provider (full event coverage). This hybrid provider
+only activates as a free-tier fallback when no premium key is set.
 """
 
 import dataclasses
@@ -51,11 +55,24 @@ class CricketHybridProvider(SportsProvider):
         return "cricket_hybrid"
 
     def supports_league(self, league: str) -> bool:
-        """Support leagues that have Cricbuzz as fallback provider."""
+        """Support leagues that have Cricbuzz as fallback provider.
+
+        When TSDB has a premium key, decline so the TSDB provider handles
+        cricket directly (full event coverage, no Cricbuzz scraping needed).
+        """
         mapping = self._league_mapping_source.get_mapping_by_league(league)
         if not mapping:
             return False
-        return mapping.fallback_provider == "cricbuzz"
+        if mapping.fallback_provider != "cricbuzz":
+            return False
+
+        # If TSDB is premium, let TSDB handle cricket directly
+        from teamarr.providers.registry import ProviderRegistry
+
+        if ProviderRegistry.is_provider_premium("tsdb"):
+            return False
+
+        return True
 
     def get_events(self, league: str, target_date: date) -> list[Event]:
         """Get events from Cricbuzz, enriched with TSDB team logos."""
