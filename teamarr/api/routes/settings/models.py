@@ -5,7 +5,16 @@ All request/response models for settings endpoints.
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
+
+# Sentinel value for masked secrets in API responses.
+# Update handlers should treat this as "unchanged" (skip update).
+MASKED_SECRET = "********"
+
+
+def unmask_or_skip(value: str | None) -> str | None:
+    """Convert masked secret back to None so DB update skips the field."""
+    return None if value == MASKED_SECRET else value
 
 
 def _validate_profile_ids(v: Any) -> list[str | int] | None:
@@ -49,6 +58,11 @@ class DispatcharrSettingsModel(BaseModel):
     url: str | None = None
     username: str | None = None
     password: str | None = None
+
+    @field_serializer("password")
+    @classmethod
+    def _mask_password(cls, v: str | None) -> str | None:
+        return MASKED_SECRET if v else None
     epg_id: int | None = None
     # None = all profiles, [] = no profiles, [1,2,...] = specific profiles
     # Supports int IDs and string wildcards like "{sport}", "{league}"
@@ -217,6 +231,11 @@ class DisplaySettingsModel(BaseModel):
     xmltv_generator_name: str = "Teamarr"
     xmltv_generator_url: str = "https://github.com/Pharaoh-Labs/teamarr"
     tsdb_api_key: str | None = None  # Optional TheSportsDB premium API key
+
+    @field_serializer("tsdb_api_key")
+    @classmethod
+    def _mask_tsdb_key(cls, v: str | None) -> str | None:
+        return MASKED_SECRET if v else None
 
 
 class TSDBKeyValidationRequest(BaseModel):

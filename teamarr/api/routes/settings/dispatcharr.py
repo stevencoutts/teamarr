@@ -9,6 +9,7 @@ from .models import (
     ConnectionTestResponse,
     DispatcharrSettingsModel,
     DispatcharrSettingsUpdate,
+    unmask_or_skip,
 )
 
 router = APIRouter()
@@ -26,7 +27,7 @@ def get_dispatcharr_settings():
         enabled=settings.enabled,
         url=settings.url,
         username=settings.username,
-        password="********" if settings.password else None,
+        password=settings.password,
         epg_id=settings.epg_id,
         default_channel_profile_ids=settings.default_channel_profile_ids,
         default_stream_profile_id=settings.default_stream_profile_id,
@@ -51,7 +52,7 @@ def update_dispatcharr_settings(update: DispatcharrSettingsUpdate):
             enabled=update.enabled,
             url=update.url,
             username=update.username,
-            password=update.password,
+            password=unmask_or_skip(update.password),
             epg_id=update.epg_id,
             default_channel_profile_ids=update.default_channel_profile_ids,
             default_stream_profile_id=update.default_stream_profile_id,
@@ -75,7 +76,7 @@ def update_dispatcharr_settings(update: DispatcharrSettingsUpdate):
         enabled=settings.enabled,
         url=settings.url,
         username=settings.username,
-        password="********" if settings.password else None,
+        password=settings.password,
         epg_id=settings.epg_id,
         default_channel_profile_ids=settings.default_channel_profile_ids,
         default_stream_profile_id=settings.default_stream_profile_id,

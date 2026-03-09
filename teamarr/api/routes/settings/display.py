@@ -11,6 +11,7 @@ from .models import (
     ReconciliationSettingsModel,
     TSDBKeyValidationRequest,
     TSDBKeyValidationResponse,
+    unmask_or_skip,
 )
 
 router = APIRouter()
@@ -131,11 +132,9 @@ def update_reconciliation_settings(update: ReconciliationSettingsModel):
 def get_display_settings():
     """Get display/formatting settings."""
     from teamarr.database.settings import get_all_settings
-    from teamarr.database.settings.read import get_tsdb_api_key
 
     with get_db() as conn:
         settings = get_all_settings(conn)
-        tsdb_api_key = get_tsdb_api_key(conn)
 
     return DisplaySettingsModel(
         time_format=settings.display.time_format,
@@ -143,7 +142,7 @@ def get_display_settings():
         channel_id_format=settings.display.channel_id_format,
         xmltv_generator_name=settings.display.xmltv_generator_name,
         xmltv_generator_url=settings.display.xmltv_generator_url,
-        tsdb_api_key=tsdb_api_key,
+        tsdb_api_key=settings.display.tsdb_api_key,
     )
 
 
@@ -168,7 +167,7 @@ def update_display_settings_endpoint(update: DisplaySettingsModel):
             channel_id_format=update.channel_id_format,
             xmltv_generator_name=update.xmltv_generator_name,
             xmltv_generator_url=update.xmltv_generator_url,
-            tsdb_api_key=update.tsdb_api_key,
+            tsdb_api_key=unmask_or_skip(update.tsdb_api_key),
         )
 
     # Update cached display settings so new values are used immediately
@@ -182,16 +181,13 @@ def update_display_settings_endpoint(update: DisplaySettingsModel):
 
     # Reinitialize TSDB provider so it picks up the new API key
     # without requiring a restart. The factory re-reads the key from DB.
-    if update.tsdb_api_key is not None:
+    if unmask_or_skip(update.tsdb_api_key) is not None:
         from teamarr.providers.registry import ProviderRegistry
 
         ProviderRegistry.reinitialize_provider("tsdb")
 
-    from teamarr.database.settings.read import get_tsdb_api_key
-
     with get_db() as conn:
         settings = get_all_settings(conn)
-        tsdb_api_key = get_tsdb_api_key(conn)
 
     return DisplaySettingsModel(
         time_format=settings.display.time_format,
@@ -199,7 +195,7 @@ def update_display_settings_endpoint(update: DisplaySettingsModel):
         channel_id_format=settings.display.channel_id_format,
         xmltv_generator_name=settings.display.xmltv_generator_name,
         xmltv_generator_url=settings.display.xmltv_generator_url,
-        tsdb_api_key=tsdb_api_key,
+        tsdb_api_key=settings.display.tsdb_api_key,
     )
 
 

@@ -68,7 +68,7 @@ def get_settings():
             enabled=settings.dispatcharr.enabled,
             url=settings.dispatcharr.url,
             username=settings.dispatcharr.username,
-            password="********" if settings.dispatcharr.password else None,
+            password=settings.dispatcharr.password,
             epg_id=settings.dispatcharr.epg_id,
             default_channel_profile_ids=settings.dispatcharr.default_channel_profile_ids,
             default_stream_profile_id=settings.dispatcharr.default_stream_profile_id,
@@ -117,7 +117,7 @@ def get_settings():
             channel_id_format=settings.display.channel_id_format,
             xmltv_generator_name=settings.display.xmltv_generator_name,
             xmltv_generator_url=settings.display.xmltv_generator_url,
-            tsdb_api_key="********" if settings.display.tsdb_api_key else None,
+            tsdb_api_key=settings.display.tsdb_api_key,
         ),
         team_filter=TeamFilterSettingsModel(
             include_teams=settings.team_filter.include_teams,

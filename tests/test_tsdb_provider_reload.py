@@ -97,4 +97,4 @@ class TestDisplaySettingsReloadIntegration:
 
         source = inspect.getsource(update_display_settings_endpoint)
         assert 'reinitialize_provider("tsdb")' in source
-        assert "update.tsdb_api_key is not None" in source
+        assert "unmask_or_skip(update.tsdb_api_key) is not None" in source
