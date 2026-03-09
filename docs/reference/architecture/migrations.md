@@ -3,7 +3,7 @@ title: Database Migrations
 parent: Architecture
 grand_parent: Technical Reference
 nav_order: 6
-docs_version: "2.3.0"
+docs_version: "2.3.1"
 ---
 
 # Database Migrations
@@ -151,14 +151,34 @@ To create:
 3. Update `connection.py` to use new checkpoint
 4. Old checkpoint can be removed (or kept for users on very old versions)
 
+## Pre-Migrations
+
+Some schema changes need to happen **before** the checkpoint runs (e.g., renaming columns that the checkpoint references). These are handled by dedicated functions called before `apply_checkpoint_v43()`:
+
+| Function | Purpose |
+|----------|---------|
+| `_rename_league_id_column_if_needed` | Renames legacy `league_id` column |
+| `_add_league_alias_column_if_needed` | Adds `league_alias` column |
+| `_add_gracenote_category_column_if_needed` | Adds `gracenote_category` column |
+| `_add_logo_url_dark_column_if_needed` | Adds `logo_url_dark` column |
+| `_add_series_slug_pattern_column_if_needed` | Adds `series_slug_pattern` column |
+| `_add_fallback_columns_if_needed` | Adds `fallback_provider` and `fallback_league_id` |
+| `_add_tsdb_tier_column_if_needed` | Adds `tsdb_tier` for TSDB free/premium classification |
+| `_migrate_exception_keywords_columns` | Restructures exception keyword storage |
+| `_migrate_settings_for_v65` | Channel lifecycle overhaul (v62) |
+
+Pre-migrations are idempotent and only modify the schema if the target column/table doesn't already exist.
+
 ## Version History
+
+**Current schema version: 67** (25 incremental migrations since checkpoint)
 
 | Version | Type | Description |
 |---------|------|-------------|
 | 2 | Base | Initial V2 schema |
-| 3-42 | Checkpoint | Consolidated into checkpoint_v43 |
+| 3-42 | Consolidated | Merged into checkpoint_v43 |
 | 43 | Checkpoint | Checkpoint baseline |
-| 44+ | Incremental | Individual migrations |
+| 44-67 | Incremental | Individual migrations in `connection.py` |
 
 ## Troubleshooting
 

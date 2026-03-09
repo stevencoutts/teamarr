@@ -3,7 +3,7 @@ title: Detection Keyword Service
 parent: Architecture
 grand_parent: Technical Reference
 nav_order: 6
-docs_version: "2.3.0"
+docs_version: "2.3.1"
 ---
 
 # Detection Keyword Service
@@ -71,18 +71,20 @@ The `DetectionKeywordService` provides centralized pattern-based detection for s
 
 ### 2. Pattern Sources
 
-**Phase 1 (Current):** Patterns load from `teamarr/utilities/constants.py`
-- COMBAT_SPORTS_KEYWORDS
-- LEAGUE_HINT_PATTERNS
-- SPORT_HINT_PATTERNS
-- PLACEHOLDER_PATTERNS
-- CARD_SEGMENT_PATTERNS
-- COMBAT_SPORTS_EXCLUDE_PATTERNS
-- GAME_SEPARATORS
+**Phase 1 (Current):** Built-in patterns from `teamarr/utilities/constants.py` plus user-defined patterns from the `detection_keywords` database table (managed via the Detection Library UI).
 
-**Phase 2 (Future):** Patterns load from database with constants as fallback
-- `detection_keywords` table
-- User-defined custom patterns
+- COMBAT_SPORTS_KEYWORDS (100+ keywords)
+- LEAGUE_HINT_PATTERNS (70+ patterns, including multi-league umbrellas)
+- SPORT_HINT_PATTERNS (38 patterns, including multi-sport hints)
+- PLACEHOLDER_PATTERNS (19 patterns)
+- CARD_SEGMENT_PATTERNS (8 patterns)
+- COMBAT_SPORTS_EXCLUDE_PATTERNS (13 patterns)
+- GAME_SEPARATORS (10 separators: vs, @, at, v, x, contre, gegen, contra)
+
+User-defined patterns (league hints, sport hints, event type keywords) are stored in the `detection_keywords` table and managed through **Detection Library** in the UI. These extend the built-in patterns.
+
+**Phase 2 (Future):** Full database-backed override of all pattern categories
+- User patterns override built-in defaults
 - Runtime modification without restart
 
 ### 3. Pattern Caching
@@ -133,6 +135,35 @@ Groups can set `skip_builtin_filter=True` to bypass built-in filtering:
 
 This allows users to match streams that would normally be filtered (e.g., individual sports like golf or tennis that Teamarr can't schedule-match but user wants in EPG).
 
+## Multi-Sport Hints
+
+Some keywords are ambiguous across sports. Sport hints support multi-sport targets:
+
+```python
+# Single sport
+"hockey" → "Hockey"
+
+# Multiple sports (bare "football" is ambiguous)
+"football" → ["Soccer", "Football"]
+```
+
+When a multi-sport hint matches, the matcher tries all listed sports. In stream filtering, a stream is only excluded if **all** its hinted sports are unsupported.
+
+Multi-sport targets are stored as JSON arrays in the database (`'["Soccer", "Football"]'`) and parsed back to lists. Single-element arrays are collapsed to plain strings.
+
+## Multi-League Hints
+
+League hints can map to multiple leagues for umbrella brands:
+
+| Keyword | Maps To |
+|---------|---------|
+| `EFL` | `eng.2`, `eng.3`, `eng.4`, `eng.fa` |
+| `Bundesliga` | `ger.1`, `ger.2` |
+| `CHL` | `ohl`, `whl`, `qmjhl` |
+| `NCAAB` | `mens-college-basketball`, `womens-college-basketball` |
+
+When a stream matches a multi-league hint, the matcher tries events from all listed leagues.
+
 ## Usage Examples
 
 ```python
@@ -155,6 +186,19 @@ stats = DetectionKeywordService.warm_cache()
 # Returns: {'combat_keywords': 45, 'league_hints': 59, ...}
 ```
 
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/detection-keywords` | List all keywords |
+| GET | `/api/v1/detection-keywords/categories` | Describe available categories |
+| GET | `/api/v1/detection-keywords/{category}` | Filter by category |
+| POST | `/api/v1/detection-keywords` | Create keyword |
+| PUT | `/api/v1/detection-keywords/id/{id}` | Update keyword |
+| DELETE | `/api/v1/detection-keywords/id/{id}` | Delete keyword |
+| POST | `/api/v1/detection-keywords/import` | Bulk import (upsert) |
+| GET | `/api/v1/detection-keywords/export` | Export keywords as JSON |
+
 ## File Locations
 
 | Component | Location |
@@ -163,4 +207,5 @@ stats = DetectionKeywordService.warm_cache()
 | Classifier | `teamarr/consumers/matching/classifier.py` |
 | Stream Filter | `teamarr/services/stream_filter.py` |
 | Constants | `teamarr/utilities/constants.py` |
-| Future DB Table | `teamarr/database/schema.sql` (detection_keywords) |
+| DB CRUD | `teamarr/database/detection_keywords.py` |
+| API Routes | `teamarr/api/routes/detection_keywords.py` |

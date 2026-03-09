@@ -2,12 +2,12 @@
 title: Supported Leagues
 parent: Technical Reference
 nav_order: 1
-docs_version: "2.3.0"
+docs_version: "2.3.1"
 ---
 
 # Supported Sports & Leagues
 
-Teamarr supports **97 pre-configured leagues** across 13 sports, plus **240+ dynamically discovered soccer leagues** from ESPN. Pre-configured leagues have full support (team import + event matching). Discovered leagues support event matching only.
+Teamarr supports **81 pre-configured leagues** across 13 sports, plus **240+ dynamically discovered soccer leagues** from ESPN. Pre-configured leagues have full support (team import + event matching). Discovered leagues support event matching only.
 
 ## Support Levels
 
@@ -293,4 +293,6 @@ Cricket leagues are TSDB premium tier. A [premium API key](providers/tsdb.md) is
 
 ## Adding New Leagues
 
-New leagues are added directly to the database schema. If you need a league that isn't listed here, please open an issue on [GitHub](https://github.com/Pharaoh-Labs/teamarr/issues).
+New leagues are added to the `INSERT OR REPLACE INTO leagues` block in `teamarr/database/schema.sql`. Each league requires a provider, league ID, display name, sport, and optionally logos and TSDB tier. See the [Providers](providers/) section for details on each provider's ID format.
+
+If you need a league that isn't listed here, please open an issue on [GitHub](https://github.com/Pharaoh-Labs/teamarr/issues).
