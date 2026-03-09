@@ -40,6 +40,7 @@ def _build_display_settings(row) -> DisplaySettings:
         channel_id_format=row["channel_id_format"] or d.channel_id_format,
         xmltv_generator_name=row["xmltv_generator_name"] or d.xmltv_generator_name,
         xmltv_generator_url=row["xmltv_generator_url"] or d.xmltv_generator_url,
+        tsdb_api_key=row["tsdb_api_key"],
     )
 
 

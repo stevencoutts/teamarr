@@ -117,6 +117,7 @@ def get_settings():
             channel_id_format=settings.display.channel_id_format,
             xmltv_generator_name=settings.display.xmltv_generator_name,
             xmltv_generator_url=settings.display.xmltv_generator_url,
+            tsdb_api_key="********" if settings.display.tsdb_api_key else None,
         ),
         team_filter=TeamFilterSettingsModel(
             include_teams=settings.team_filter.include_teams,

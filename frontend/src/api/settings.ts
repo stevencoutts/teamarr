@@ -197,6 +197,7 @@ export interface AllSettings {
   epg: EPGSettings
   durations: DurationSettings
   reconciliation: ReconciliationSettings
+  display?: DisplaySettings
   team_filter?: TeamFilterSettings
   channel_numbering?: ChannelNumberingSettings
   stream_ordering?: StreamOrderingSettings

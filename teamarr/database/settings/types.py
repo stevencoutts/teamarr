@@ -112,6 +112,7 @@ class DisplaySettings:
     channel_id_format: str = "{team_name_pascal}.{league_id}"
     xmltv_generator_name: str = "Teamarr"
     xmltv_generator_url: str = "https://github.com/Pharaoh-Labs/teamarr"
+    tsdb_api_key: str | None = None
 
 
 @dataclass

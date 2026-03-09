@@ -1015,8 +1015,8 @@ export function Settings() {
       setScheduler(settings.scheduler)
       setEPG(settings.epg)
       setDurations(settings.durations)
-      if ((settings as unknown as { display?: DisplaySettings }).display) {
-        setDisplay((settings as unknown as { display: DisplaySettings }).display)
+      if (settings.display) {
+        setDisplay(settings.display)
       }
     }
   }, [settings])
