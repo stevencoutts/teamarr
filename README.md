@@ -46,9 +46,9 @@ If you're upgrading from 1.x, you have two options:
 
 ## Documentation
 
-**User Guide**: https://teamarr-v2.jesmann.com/
+**Official Docs**: [pharaoh-labs.github.io/teamarr](https://pharaoh-labs.github.io/teamarr/) — User Guide, Technical Reference, Supported Leagues
 
-Formal documentation coming soon.
+**Community Guide**: https://teamarr-v2.jesmann.com/
 
 ## License
 
