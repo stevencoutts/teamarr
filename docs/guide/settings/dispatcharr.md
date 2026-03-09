@@ -3,7 +3,7 @@ title: Dispatcharr Integration
 parent: Settings
 grand_parent: User Guide
 nav_order: 6
-docs_version: "2.3.0"
+docs_version: "2.3.1"
 ---
 
 # Dispatcharr Integration
@@ -36,17 +36,17 @@ A status badge shows the current connection state:
 
 ## EPG Source
 
-Select which EPG source in Dispatcharr to associate with Teamarr-managed channels.
+Select which EPG source in Dispatcharr to associate with Teamarr-managed channels. This links your channels to the correct guide data.
 
-This links your Teamarr channels to a specific EPG source in Dispatcharr, ensuring the correct guide data is displayed.
+If you haven't created an EPG source in Dispatcharr yet, you'll need to do that first. See [Dispatcharr Integration Guide](../dispatcharr-integration) for setup details.
 
 ## Default Channel Profiles
 
-Select which channel profiles to assign to Teamarr-managed channels by default. Individual [event groups can override](../event-groups/creating-groups#channel-profiles) this setting.
+Select which channel profiles to assign to Teamarr-managed channels by default. Individual [event groups can override](../event-groups/creating-groups#channel-profiles) this setting, and [per-league config](channels#per-league-channel-config) can override per league.
 
-- **All profiles selected** - Channels appear in all profiles
-- **None selected** - Channels don't appear in any profile
-- **Specific profiles** - Channels appear only in selected profiles
+- **All profiles selected** — Channels appear in all profiles
+- **None selected** — Channels don't appear in any profile
+- **Specific profiles** — Channels appear only in selected profiles
 
 ### Dynamic Wildcards
 
@@ -61,6 +61,34 @@ For example, selecting profiles `[1, {sport}]` would assign all channels to prof
 
 {: .note }
 Profile assignment is enforced on every EPG generation run. Wildcard profiles are created in Dispatcharr automatically if they don't exist.
+
+## Default Stream Profile
+
+Select which stream profile to assign to streams on Teamarr-managed channels. Stream profiles in Dispatcharr control transcoding and quality settings.
+
+If no stream profile is selected, streams are added without a profile assignment.
+
+## Default Channel Group
+
+Configure which Dispatcharr channel group to assign Teamarr-managed channels to by default.
+
+### Channel Group
+
+Select a specific channel group, or leave as "None" to not assign a group.
+
+### Group Mode
+
+| Mode | Description | Example |
+|------|-------------|---------|
+| **Static** | All channels go to the selected group | All in "Sports" |
+| **Dynamic by Sport** | Auto-create groups per sport | "Football", "Basketball", "Hockey" |
+| **Dynamic by League** | Auto-create groups per league | "NFL", "NBA", "NHL" |
+| **Custom** | Use a template pattern to create groups | `{sport} - {league}` → "Football - NFL" |
+
+When **Custom** is selected, a pattern field appears. Use `{sport}` and `{league}` variables in your pattern. Groups are created automatically in Dispatcharr if they don't exist.
+
+{: .note }
+Per-league overrides in [Settings > Channels](channels#per-league-channel-config) take precedence over these defaults.
 
 ## Logo Cleanup
 

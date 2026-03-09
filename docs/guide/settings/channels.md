@@ -3,62 +3,108 @@ title: Channels
 parent: Settings
 grand_parent: User Guide
 nav_order: 5
-docs_version: "2.3.0"
+docs_version: "2.3.1"
 ---
 
-# Channels Settings
+# Channel Settings
 
-Configure channel lifecycle, numbering, and stream ordering.
+Configure channel lifecycle, numbering, consolidation, per-league configuration, and stream ordering.
 
 ## Channel Lifecycle
 
-Controls when channels are created and deleted in Dispatcharr.
+Controls when event channels are created and deleted in Dispatcharr.
 
 ### Create Timing
 
-When to create channels before events:
+| Mode | Description |
+|------|-------------|
+| **Same day** | Create channels on the day of the event |
+| **Before event + buffer** | Create channels a configurable number of hours before the event starts |
 
-- **When stream available** - Create as soon as stream appears
-- **Same day** - Create on the day of the event
-- **Day before** through **1 week before** - Create in advance
+When "Before event + buffer" is selected, a **Pre-Event Buffer** field appears where you set the number of hours before the event to create the channel (e.g., 6 hours before).
 
 ### Delete Timing
 
-When to delete channels after events:
+| Mode | Description |
+|------|-------------|
+| **Same day** | Delete channels at midnight on the day of the event |
+| **After event + buffer** | Delete channels a configurable number of hours after the event ends |
 
-- **When stream removed** - Delete when stream disappears
-- **6 hours after** - Delete 6 hours after event ends
-- **Same day** through **1 week after** - Keep channel for a period after
+The **Post-Event Buffer** sets how many hours after the event ends to keep the channel (e.g., 2 hours after for postgame coverage).
 
-## Channel Numbering
+{: .note }
+Create and delete timing work together with EPG generation. Channels are only actually created or deleted when a generation run executes — the timing determines *eligibility*, not the exact moment.
 
-Configure how channel numbers are assigned to Auto groups.
-
-### Channel Range
-
-Set the starting channel number and optional maximum. Channels are assigned sequentially starting from this number.
+## Channel Numbering & Consolidation
 
 ### Numbering Mode
 
-| Mode | Description | Gaps | Drift Risk |
-|------|-------------|------|------------|
-| **Strict Block** | Reserve blocks by total stream count per group | Large | Minimal |
-| **Rational Block** | Reserve blocks by actual channel count (rounded to 10) | Small | Low |
-| **Strict Compact** | No reservation, sequential numbers | None | Higher |
+| Mode | Description |
+|------|-------------|
+| **Auto** | Sequential numbering from the start of the channel range. Sport/league priority determines order. |
+| **Manual** | Per-league starting channel numbers. Each league gets its own block. |
 
-### Sorting Scope
+### Channel Range
 
-- **Per Group** - Sort channels within each event group separately
-- **Global** - Sort all AUTO channels together by sport/league priority
+Both modes use a global channel range:
 
-### Sort By
+| Field | Description |
+|-------|-------------|
+| **Channel Range Start** | First channel number Teamarr can use |
+| **Channel Range End** | Last channel number (optional — leave empty for no upper limit) |
 
-- **Event Time** - Sort by when events start
-- **Sport → League → Time** - Group by sport, then league, then time
-- **Stream Order** - Keep original M3U stream order
+### Per-League Starting Channels (Manual Mode)
+
+When Manual mode is selected, a table appears listing all leagues with a configurable starting channel number for each. Use the search field and "Subscribed only" toggle to filter the list.
+
+Each league gets sequential numbers starting from its configured start. This lets you group sports into predictable channel ranges (e.g., NFL at 500, NBA at 600, NHL at 700).
+
+### Stream Consolidation Mode
+
+Controls how duplicate streams for the same event are handled:
+
+| Mode | Description |
+|------|-------------|
+| **Consolidate** | Merge multiple streams for the same event into a single channel with multiple sources. Exception keywords (configured in [Settings > Event Groups](event-groups)) can override this per-stream. |
+| **Separate** | Each stream gets its own channel, even if they're for the same event |
+
+### Channel Ordering
+
+Configure how channels are ordered within the channel range. The **Sort Priority Manager** lets you drag and drop sports and leagues into your preferred order. Higher items get lower channel numbers.
+
+Click **Auto-populate** to pre-fill with all currently subscribed sports and leagues.
+
+## Per-League Channel Config
+
+Override channel profiles, channel groups, and group modes on a per-league basis. This table lists all leagues — click a league row to expand its configuration.
+
+### Available Overrides
+
+| Setting | Options | Description |
+|---------|---------|-------------|
+| **Channel Profiles** | Default, None, or specific profiles | Which Dispatcharr profiles this league's channels appear in |
+| **Channel Group** | Default or specific group | Which Dispatcharr channel group to assign channels to |
+| **Group Mode** | Default, Static, Dynamic by Sport, Dynamic by League, Custom | How the channel group is determined |
+
+When Group Mode is set to **Custom**, a pattern field appears where you can enter a template like `{sport} - {league}` that dynamically creates groups.
+
+{: .note }
+Per-league overrides take precedence over the defaults in [Settings > Dispatcharr](dispatcharr). Use the **X** button to clear an override and revert to the default.
+
+### Filtering
+
+Use the search field to find specific leagues, and toggle "Subscribed only" to hide leagues you haven't enabled.
 
 ## Stream Ordering
 
-Configure priority rules for ordering streams within consolidated channels.
+Configure priority rules for ordering streams within consolidated channels. When multiple streams are consolidated into a single channel, these rules determine which stream is listed first (the "primary" stream).
 
-See [Stream Ordering](../event-groups/stream-matching/ordering) for details.
+### Rule Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| **M3U Account** | Prioritize streams from a specific M3U account | "Premium IPTV" = priority 1 |
+| **Event Group** | Prioritize streams from a specific event group | "ESPN+ Group" = priority 2 |
+| **Regex Pattern** | Prioritize streams matching a regex | `(?i)1080p` = priority 1 |
+
+Lower priority numbers = higher priority. Rules are evaluated in order — the first matching rule determines the stream's priority.
