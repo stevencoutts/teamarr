@@ -460,7 +460,10 @@ class TeamMatcher:
         Uses whole-name token_set_ratio matching with the following strategy:
         1. Try alias match first (100% confidence for known abbreviations)
         2. Fall back to token_set_ratio between extracted teams and event name
-        3. Rank by: score > time proximity > date proximity
+        3. If no match, strip parentheticals from raw names and retry
+           (handles noise like "(Baseball)", "(Available outside Ottawa Region)"
+           without breaking legitimate disambiguators like "Miami (OH)")
+        4. Rank by: score > time proximity > date proximity
         """
         team1_normalized = normalize_for_matching(ctx.team1) if ctx.team1 else None
         team2_normalized = normalize_for_matching(ctx.team2) if ctx.team2 else None
@@ -472,6 +475,14 @@ class TeamMatcher:
                 stream_id=ctx.stream_id,
                 detail="No team names extracted",
             )
+
+        # Pre-compute parenthetical-stripped versions from RAW names for fallback.
+        # normalize_for_matching strips parens as punctuation, so we must strip
+        # from the raw names first, then normalize — otherwise the fallback
+        # can never detect that parentheticals were removed.
+        fallback_t1, fallback_t2, has_stripped_fallback = self._prepare_stripped_fallback(
+            ctx.team1, ctx.team2, team1_normalized, team2_normalized
+        )
 
         # Check if we have date validation from the stream
         has_date_validation = ctx.classified.normalized.extracted_date is not None
@@ -513,6 +524,14 @@ class TeamMatcher:
             if not match_result:
                 match_result = self._match_teams_to_event(
                     team1_normalized, team2_normalized, event, has_date_validation
+                )
+
+            # Fallback: retry with parentheticals stripped from raw names
+            # Handles noise like "(Baseball)", "(03.10 /4PM PT)" without
+            # breaking legitimate disambiguators like "Miami (OH)" (tried above)
+            if not match_result and has_stripped_fallback:
+                match_result = self._match_teams_to_event(
+                    fallback_t1, fallback_t2, event, has_date_validation
                 )
 
             if match_result:
@@ -612,7 +631,10 @@ class TeamMatcher:
         Uses whole-name token_set_ratio matching with the following strategy:
         1. Try alias match first (100% confidence for known abbreviations)
         2. Fall back to token_set_ratio between extracted teams and event name
-        3. Rank by: score > time proximity > date proximity
+        3. If no match, strip parentheticals from raw names and retry
+           (handles noise like "(Baseball)", "(Available outside Ottawa Region)"
+           without breaking legitimate disambiguators like "Miami (OH)")
+        4. Rank by: score > time proximity > date proximity
         """
         team1_normalized = normalize_for_matching(ctx.team1) if ctx.team1 else None
         team2_normalized = normalize_for_matching(ctx.team2) if ctx.team2 else None
@@ -624,6 +646,14 @@ class TeamMatcher:
                 stream_id=ctx.stream_id,
                 detail="No team names extracted",
             )
+
+        # Pre-compute parenthetical-stripped versions from RAW names for fallback.
+        # normalize_for_matching strips parens as punctuation, so we must strip
+        # from the raw names first, then normalize — otherwise the fallback
+        # can never detect that parentheticals were removed.
+        fallback_t1, fallback_t2, has_stripped_fallback = self._prepare_stripped_fallback(
+            ctx.team1, ctx.team2, team1_normalized, team2_normalized
+        )
 
         # Check if we have date validation from the stream
         has_date_validation = ctx.classified.normalized.extracted_date is not None
@@ -666,6 +696,14 @@ class TeamMatcher:
             if not match_result:
                 match_result = self._match_teams_to_event(
                     team1_normalized, team2_normalized, event, has_date_validation
+                )
+
+            # Fallback: retry with parentheticals stripped from raw names
+            # Handles noise like "(Baseball)", "(03.10 /4PM PT)" without
+            # breaking legitimate disambiguators like "Miami (OH)" (tried above)
+            if not match_result and has_stripped_fallback:
+                match_result = self._match_teams_to_event(
+                    fallback_t1, fallback_t2, event, has_date_validation
                 )
 
             if match_result:
@@ -817,11 +855,6 @@ class TeamMatcher:
         This prevents "Marist vs Sacred Heart" from matching "Jessup vs Sacred Heart"
         just because one team name overlaps.
 
-        Uses a three-stage approach:
-        1. Try exact abbreviation token match (handles tournament/international streams)
-        2. Try matching with team names as-is (preserves "Miami (OH)" etc.)
-        3. If no match, strip parentheticals and retry (handles "Team (Available outside...)")
-
         Args:
             team1: First extracted team name (normalized)
             team2: Second extracted team name (normalized)
@@ -831,34 +864,57 @@ class TeamMatcher:
         Returns:
             Tuple of (method, confidence) if matched, None otherwise
         """
-        # Stage 0: Try exact abbreviation token match (tournament/international streams)
+        # Try exact abbreviation token match (tournament/international streams)
         abbr_result = self._check_abbreviation_match(team1, team2, event)
         if abbr_result:
             return abbr_result
 
-        # Stage 1: Try matching with original names
-        result = self._score_teams_against_event(team1, team2, event)
-        if result:
-            return result
+        # Try fuzzy matching with team names
+        return self._score_teams_against_event(team1, team2, event)
 
-        # Stage 2: If no match and parentheticals exist, strip them and retry
-        # This handles noise like "(Available outside Ottawa Region)" without
-        # breaking legitimate team disambiguators like "Miami (OH)"
-        t1_stripped = self._strip_parentheticals(team1) if team1 and "(" in team1 else team1
-        t2_stripped = self._strip_parentheticals(team2) if team2 and "(" in team2 else team2
-
-        if t1_stripped != team1 or t2_stripped != team2:
-            return self._score_teams_against_event(t1_stripped, t2_stripped, event)
-
-        return None
-
-    def _strip_parentheticals(self, name: str) -> str:
+    @staticmethod
+    def _strip_parentheticals(name: str) -> str:
         """Strip parenthetical content from team name.
 
         Used as fallback when matching fails with parentheticals intact.
         Example: "Ottawa (Available outside region)" → "Ottawa"
+                 "Texas State (Baseball) (03.10 /4PM PT)" → "Texas State"
         """
         return re.sub(r"\s*\([^)]*\)", "", name).strip()
+
+    def _prepare_stripped_fallback(
+        self,
+        raw_team1: str | None,
+        raw_team2: str | None,
+        norm_team1: str | None,
+        norm_team2: str | None,
+    ) -> tuple[str | None, str | None, bool]:
+        """Pre-compute parenthetical-stripped team names for fallback matching.
+
+        Strips parentheticals from the RAW (pre-normalization) team names, then
+        normalizes the result. This is necessary because normalize_for_matching()
+        removes parentheses as punctuation, flattening "(Baseball)" into extra
+        tokens rather than removing the content entirely.
+
+        Returns:
+            Tuple of (stripped_t1, stripped_t2, has_fallback) where has_fallback
+            is True if the stripped versions differ from the originals.
+        """
+        fallback_t1 = norm_team1
+        fallback_t2 = norm_team2
+
+        if raw_team1 and "(" in raw_team1:
+            stripped = self._strip_parentheticals(raw_team1)
+            if stripped:
+                fallback_t1 = normalize_for_matching(stripped)
+
+        if raw_team2 and "(" in raw_team2:
+            stripped = self._strip_parentheticals(raw_team2)
+            if stripped:
+                fallback_t2 = normalize_for_matching(stripped)
+
+        has_fallback = fallback_t1 != norm_team1 or fallback_t2 != norm_team2
+        return fallback_t1, fallback_t2, has_fallback
 
     def _score_teams_against_event(
         self,
