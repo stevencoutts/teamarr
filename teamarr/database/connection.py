@@ -1512,10 +1512,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         # Wrapped in try-except for minimal test databases without leagues table
         try:
             free_leagues = [
-                "cfl", "unrivaled", "norwegian-hockey", "afl",
+                "cfl", "unrivaled", "norwegian-hockey",
                 "nrl", "super-rugby", "boxing",
             ]
-            premium_leagues = ["ipl", "bbl", "sa20"]
+            premium_leagues = ["ipl", "bbl", "sa20", "afl"]
 
             for code in free_leagues:
                 conn.execute(
