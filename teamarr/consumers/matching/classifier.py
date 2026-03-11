@@ -1206,7 +1206,30 @@ def classify_stream(
                 )
 
         # Step 2: Check for event card
-        if is_event_card(text, league_event_type):
+        # Guard: if sport hint identifies a non-combat sport, skip keyword-
+        # based event_card detection. This prevents user-defined EVENT_CARD
+        # keywords (e.g., "card", "main") from stealing team sports streams
+        # like "(Baseball)". The league_event_type override still takes
+        # priority — if the league is explicitly configured as event_card,
+        # the sport hint won't block it.
+        _event_card_sports = {"mma", "boxing"}
+        _sport_blocks_keywords = False
+        if sport_hint is not None and league_event_type != "event_card":
+            if isinstance(sport_hint, list):
+                _sport_blocks_keywords = not any(
+                    s.lower() in _event_card_sports for s in sport_hint
+                )
+            else:
+                _sport_blocks_keywords = (
+                    sport_hint.lower() not in _event_card_sports
+                )
+            if _sport_blocks_keywords:
+                logger.debug(
+                    "[CLASSIFY] Sport hint '%s' blocks event_card classification",
+                    sport_hint,
+                )
+
+        if not _sport_blocks_keywords and is_event_card(text, league_event_type):
             event_hint = extract_event_card_hint(text)
 
             # Detect card segment (early_prelims, prelims, main_card, combined)
