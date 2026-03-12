@@ -1700,6 +1700,9 @@ def _add_column_if_not_exists(
     """
     cursor = conn.execute(f"PRAGMA table_info({table})")
     columns = {row["name"] for row in cursor.fetchall()}
+    if not columns:
+        # Table doesn't exist yet — schema.sql will create it with all columns
+        return
     if column not in columns:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_def}")
 
