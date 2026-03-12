@@ -58,6 +58,10 @@ class ClassifiedStream:
     # Track if custom regex was used
     custom_regex_used: bool = False
 
+    # Feed hint: "home" or "away" if a feed indicator was detected in stream name
+    # Used by feed separation to resolve to actual team after event matching
+    feed_hint: str | None = None
+
 
 @dataclass
 class CustomRegexConfig:
@@ -1121,10 +1125,47 @@ def _clean_fighter_name(name: str) -> str | None:
 # =============================================================================
 
 
+def detect_and_strip_feed_hint(
+    text: str,
+    home_terms: list[str],
+    away_terms: list[str],
+) -> tuple[str, str | None]:
+    """Detect HOME/AWAY feed indicator in text and strip it.
+
+    Searches for configurable terms using word boundary matching.
+    Returns the cleaned text (token removed) and the feed hint.
+
+    Args:
+        text: Normalized stream text (used for team extraction)
+        home_terms: Terms that indicate home feed (e.g., ["HOME"])
+        away_terms: Terms that indicate away feed (e.g., ["AWAY"])
+
+    Returns:
+        Tuple of (cleaned_text, feed_hint) where feed_hint is "home", "away", or None
+    """
+    for term in home_terms:
+        pattern = re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
+        if pattern.search(text):
+            cleaned = pattern.sub("", text)
+            cleaned = " ".join(cleaned.split())  # Normalize whitespace
+            return cleaned, "home"
+
+    for term in away_terms:
+        pattern = re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
+        if pattern.search(text):
+            cleaned = pattern.sub("", text)
+            cleaned = " ".join(cleaned.split())  # Normalize whitespace
+            return cleaned, "away"
+
+    return text, None
+
+
 def classify_stream(
     stream_name: str,
     league_event_type: str | None = None,
     custom_regex: CustomRegexConfig | None = None,
+    feed_home_terms: list[str] | None = None,
+    feed_away_terms: list[str] | None = None,
 ) -> ClassifiedStream:
     """Classify a stream for matching strategy selection.
 
@@ -1183,6 +1224,22 @@ def classify_stream(
         )
     else:
         text = normalized.normalized
+
+        # Detect and strip feed hint (HOME/AWAY) before team extraction
+        # so tokens like "HOME" don't pollute team name matching
+        feed_hint = None
+        if feed_home_terms or feed_away_terms:
+            text, feed_hint = detect_and_strip_feed_hint(
+                text,
+                feed_home_terms or [],
+                feed_away_terms or [],
+            )
+            if feed_hint:
+                logger.debug(
+                    "[CLASSIFY] Feed hint '%s' detected and stripped from '%s'",
+                    feed_hint,
+                    stream_name[:50],
+                )
 
         # Detect league and sport hints (useful for all categories)
         league_hint = detect_league_hint(text)
@@ -1278,6 +1335,7 @@ def classify_stream(
                 league_hint=league_hint,
                 sport_hint=sport_hint,
                 custom_regex_used=custom_regex_used,
+                feed_hint=feed_hint,
             )
 
         # Step 3: Try custom regex for team extraction (if configured)
@@ -1294,6 +1352,7 @@ def classify_stream(
                     league_hint=league_hint,
                     sport_hint=sport_hint,
                     custom_regex_used=True,
+                    feed_hint=feed_hint,
                 )
 
         # Step 4: Check for game separator (builtin fallback)
@@ -1312,6 +1371,7 @@ def classify_stream(
                         separator_found=separator,
                         league_hint=league_hint,
                         sport_hint=sport_hint,
+                        feed_hint=feed_hint,
                     )
 
         # Step 5: Default to placeholder if we can't classify
@@ -1321,6 +1381,7 @@ def classify_stream(
                 normalized=normalized,
                 league_hint=league_hint,
                 sport_hint=sport_hint,
+                feed_hint=feed_hint,
             )
 
     logger.debug(
@@ -1341,6 +1402,8 @@ def classify_streams(
     stream_names: list[str],
     league_event_type: str | None = None,
     custom_regex: CustomRegexConfig | None = None,
+    feed_home_terms: list[str] | None = None,
+    feed_away_terms: list[str] | None = None,
 ) -> list[ClassifiedStream]:
     """Classify multiple streams.
 
@@ -1348,8 +1411,13 @@ def classify_streams(
         stream_names: List of raw stream names
         league_event_type: Optional event_type from leagues table
         custom_regex: Optional custom regex configuration for team extraction
+        feed_home_terms: Terms indicating home feed (e.g., ["HOME"])
+        feed_away_terms: Terms indicating away feed (e.g., ["AWAY"])
 
     Returns:
         List of ClassifiedStream objects
     """
-    return [classify_stream(name, league_event_type, custom_regex) for name in stream_names]
+    return [
+        classify_stream(name, league_event_type, custom_regex, feed_home_terms, feed_away_terms)
+        for name in stream_names
+    ]

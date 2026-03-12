@@ -48,6 +48,7 @@ from teamarr.database.groups import (
     get_group,
     update_group_stats,
 )
+from teamarr.database.settings import get_feed_separation_settings
 from teamarr.database.stats import (
     FailedMatch,
     MatchedStream,
@@ -1350,6 +1351,11 @@ class EventGroupProcessor:
                 bool(row["include_final_events"]) if row else False
             )
 
+            # Load feed separation settings
+            feed_settings = get_feed_separation_settings(conn)
+            feed_home_terms = feed_settings.home_terms if feed_settings.enabled else None
+            feed_away_terms = feed_settings.away_terms if feed_settings.enabled else None
+
         sport_durations = self._load_sport_durations_cached()
 
         # Search all known leagues (broad match), include only subscribed.
@@ -1382,6 +1388,8 @@ class EventGroupProcessor:
             custom_regex_league_enabled=group.custom_regex_league_enabled,
             shared_events=self._shared_events,  # Reuse events across groups in same run
             stream_timezone=group.stream_timezone,  # TZ for interpreting stream dates
+            feed_home_terms=feed_home_terms,
+            feed_away_terms=feed_away_terms,
         )
 
         result = matcher.match_all(

@@ -95,6 +95,9 @@ class MatchedStreamResult:
     # Exception handling
     exception_keyword: str | None = None
 
+    # Feed separation
+    feed_hint: str | None = None  # "home" or "away" if detected
+
     # Detailed reason enums from MatchOutcome (preserved for type-safe access)
     failed_reason: FailedReason | None = None
     filtered_reason: FilteredReason | None = None
@@ -183,6 +186,8 @@ class StreamMatcher:
         days_ahead: int | None = None,
         shared_events: dict[str, tuple[list[Event], bool]] | None = None,
         stream_timezone: str | None = None,
+        feed_home_terms: list[str] | None = None,
+        feed_away_terms: list[str] | None = None,
     ):
         """Initialize the matcher.
 
@@ -210,6 +215,8 @@ class StreamMatcher:
                            Values are (events, was_cache_only) tuples where was_cache_only
                            indicates if the result came from a cache-only lookup.
             stream_timezone: IANA timezone for interpreting stream dates (group setting)
+            feed_home_terms: Terms indicating home feed (e.g., ["HOME"])
+            feed_away_terms: Terms indicating away feed (e.g., ["AWAY"])
         """
         self._service = service
         self._db_factory = db_factory
@@ -260,6 +267,10 @@ class StreamMatcher:
             if has_custom_regex
             else None
         )
+
+        # Feed separation terms
+        self._feed_home_terms = feed_home_terms
+        self._feed_away_terms = feed_away_terms
 
         # Initialize cache
         self._cache = StreamMatchCache(db_factory)
@@ -480,7 +491,10 @@ class StreamMatcher:
         # Determine event type from configured leagues
         league_event_type = self._get_dominant_event_type()
 
-        classified = classify_stream(stream_name, league_event_type, self._custom_regex)
+        classified = classify_stream(
+            stream_name, league_event_type, self._custom_regex,
+            self._feed_home_terms, self._feed_away_terms,
+        )
 
         # Step 2: Handle placeholders (streams that couldn't be classified)
         # Note: Placeholder pattern detection and unsupported sports filtering
@@ -662,6 +676,7 @@ class StreamMatcher:
             filtered_reason=outcome.filtered_reason,
             excluded_reason=outcome.excluded_reason,
             detail=outcome.detail,
+            feed_hint=classified.feed_hint,
         )
 
     def _get_dominant_event_type(self) -> str | None:
