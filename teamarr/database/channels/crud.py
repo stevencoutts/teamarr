@@ -11,6 +11,21 @@ from .types import ManagedChannel
 
 logger = logging.getLogger(__name__)
 
+# Cache for column existence checks (cleared on module reload)
+_column_cache: dict[str, bool] = {}
+
+
+def _has_column(conn: Connection, table: str, column: str) -> bool:
+    """Check if a column exists in a table (cached per session)."""
+    key = f"{table}.{column}"
+    if key not in _column_cache:
+        cols = {
+            row[1]
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        _column_cache[key] = column in cols
+    return _column_cache[key]
+
 
 def create_managed_channel(
     conn: Connection,
@@ -83,6 +98,11 @@ def create_managed_channel(
 
     for field_name in allowed_fields:
         if field_name in kwargs and kwargs[field_name] is not None:
+            # Skip feed_team_id if column doesn't exist yet (migration v69)
+            if field_name == "feed_team_id" and not _has_column(
+                conn, "managed_channels", "feed_team_id"
+            ):
+                continue
             columns.append(field_name)
             value = kwargs[field_name]
             # Serialize lists/dicts to JSON
@@ -480,11 +500,15 @@ def find_existing_channel(
         else:
             conditions.append("exception_keyword IS NULL")
 
-        if feed_team_id:
-            conditions.append("feed_team_id = ?")
-            params.append(feed_team_id)
-        else:
-            conditions.append("feed_team_id IS NULL")
+        # feed_team_id column may not exist yet (migration v69)
+        # Check before adding to avoid OperationalError
+        has_feed_col = _has_column(conn, "managed_channels", "feed_team_id")
+        if has_feed_col:
+            if feed_team_id:
+                conditions.append("feed_team_id = ?")
+                params.append(feed_team_id)
+            else:
+                conditions.append("feed_team_id IS NULL")
 
         where = " AND ".join(conditions)
         cursor = conn.execute(
