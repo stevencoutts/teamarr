@@ -1724,118 +1724,6 @@ export function Settings() {
       </Card>
       )}
 
-      </>
-      )}
-
-      {/* Channel Management Tab */}
-      {activeTab === "channels" && (
-      <>
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold">Channel Management</h2>
-        <p className="text-sm text-muted-foreground">Configure channel lifecycle, numbering, and sorting</p>
-      </div>
-
-      {/* Channel Lifecycle */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Channel Lifecycle</CardTitle>
-          <CardDescription>
-            Configure when channels are created and deleted for event groups
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="ch-create-timing">Channel Create Timing</Label>
-              <Select
-                id="ch-create-timing"
-                value={lifecycle?.channel_create_timing ?? "same_day"}
-                onChange={(e) =>
-                  lifecycle && setLifecycle({ ...lifecycle, channel_create_timing: e.target.value })
-                }
-              >
-                <option value="same_day">Same day</option>
-                <option value="before_event">Before event + buffer</option>
-              </Select>
-              <Label htmlFor="ch-pre-buffer" className={lifecycle?.channel_create_timing !== "before_event" ? "text-muted-foreground" : ""}>
-                Pre-Event Buffer (hours)
-              </Label>
-              <Input
-                id="ch-pre-buffer"
-                type="number"
-                min={0}
-                max={336}
-                disabled={lifecycle?.channel_create_timing !== "before_event"}
-                value={Math.round((lifecycle?.channel_pre_buffer_minutes ?? 60) / 60)}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value)
-                  if (!isNaN(val) && lifecycle) {
-                    setLifecycle({ ...lifecycle, channel_pre_buffer_minutes: Math.max(0, Math.min(336, val)) * 60 })
-                  }
-                }}
-              />
-              <p className="text-xs text-muted-foreground">
-                {lifecycle?.channel_create_timing === "before_event"
-                  ? "Hours before event start to create channel"
-                  : "\u00A0"}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="ch-delete-timing">Channel Delete Timing</Label>
-              <Select
-                id="ch-delete-timing"
-                value={lifecycle?.channel_delete_timing ?? "same_day"}
-                onChange={(e) =>
-                  lifecycle && setLifecycle({ ...lifecycle, channel_delete_timing: e.target.value })
-                }
-              >
-                <option value="same_day">Same day</option>
-                <option value="after_event">After event + buffer</option>
-              </Select>
-              <Label htmlFor="ch-post-buffer">Post-Event Buffer (hours)</Label>
-              <Input
-                id="ch-post-buffer"
-                type="number"
-                min={0}
-                max={336}
-                value={Math.round((lifecycle?.channel_post_buffer_minutes ?? 60) / 60)}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value)
-                  if (!isNaN(val) && lifecycle) {
-                    setLifecycle({ ...lifecycle, channel_post_buffer_minutes: Math.max(0, Math.min(336, val)) * 60 })
-                  }
-                }}
-              />
-              <p className="text-xs text-muted-foreground">
-                {lifecycle?.channel_delete_timing === "after_event"
-                  ? "Hours after event ends to delete channel"
-                  : "Midnight cross-over events will always use post-event buffer"}
-              </p>
-            </div>
-          </div>
-
-          <Button
-            onClick={async () => {
-              if (!lifecycle) return
-              try {
-                await updateLifecycle.mutateAsync(lifecycle)
-                toast.success("Channel lifecycle settings saved")
-              } catch (err) {
-                toast.error(err instanceof Error ? err.message : "Failed to save")
-              }
-            }}
-            disabled={updateLifecycle.isPending}
-          >
-            {updateLifecycle.isPending ? (
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-1" />
-            )}
-            Save
-          </Button>
-        </CardContent>
-      </Card>
-
       {/* Feed Separation (HOME/AWAY Detection) */}
       <Card>
         <CardHeader>
@@ -1953,6 +1841,118 @@ export function Settings() {
             disabled={updateFeedSeparation.isPending}
           >
             {updateFeedSeparation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-1" />
+            )}
+            Save
+          </Button>
+        </CardContent>
+      </Card>
+
+      </>
+      )}
+
+      {/* Channel Management Tab */}
+      {activeTab === "channels" && (
+      <>
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold">Channel Management</h2>
+        <p className="text-sm text-muted-foreground">Configure channel lifecycle, numbering, and sorting</p>
+      </div>
+
+      {/* Channel Lifecycle */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Channel Lifecycle</CardTitle>
+          <CardDescription>
+            Configure when channels are created and deleted for event groups
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="ch-create-timing">Channel Create Timing</Label>
+              <Select
+                id="ch-create-timing"
+                value={lifecycle?.channel_create_timing ?? "same_day"}
+                onChange={(e) =>
+                  lifecycle && setLifecycle({ ...lifecycle, channel_create_timing: e.target.value })
+                }
+              >
+                <option value="same_day">Same day</option>
+                <option value="before_event">Before event + buffer</option>
+              </Select>
+              <Label htmlFor="ch-pre-buffer" className={lifecycle?.channel_create_timing !== "before_event" ? "text-muted-foreground" : ""}>
+                Pre-Event Buffer (hours)
+              </Label>
+              <Input
+                id="ch-pre-buffer"
+                type="number"
+                min={0}
+                max={336}
+                disabled={lifecycle?.channel_create_timing !== "before_event"}
+                value={Math.round((lifecycle?.channel_pre_buffer_minutes ?? 60) / 60)}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value)
+                  if (!isNaN(val) && lifecycle) {
+                    setLifecycle({ ...lifecycle, channel_pre_buffer_minutes: Math.max(0, Math.min(336, val)) * 60 })
+                  }
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                {lifecycle?.channel_create_timing === "before_event"
+                  ? "Hours before event start to create channel"
+                  : "\u00A0"}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ch-delete-timing">Channel Delete Timing</Label>
+              <Select
+                id="ch-delete-timing"
+                value={lifecycle?.channel_delete_timing ?? "same_day"}
+                onChange={(e) =>
+                  lifecycle && setLifecycle({ ...lifecycle, channel_delete_timing: e.target.value })
+                }
+              >
+                <option value="same_day">Same day</option>
+                <option value="after_event">After event + buffer</option>
+              </Select>
+              <Label htmlFor="ch-post-buffer">Post-Event Buffer (hours)</Label>
+              <Input
+                id="ch-post-buffer"
+                type="number"
+                min={0}
+                max={336}
+                value={Math.round((lifecycle?.channel_post_buffer_minutes ?? 60) / 60)}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value)
+                  if (!isNaN(val) && lifecycle) {
+                    setLifecycle({ ...lifecycle, channel_post_buffer_minutes: Math.max(0, Math.min(336, val)) * 60 })
+                  }
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                {lifecycle?.channel_delete_timing === "after_event"
+                  ? "Hours after event ends to delete channel"
+                  : "Midnight cross-over events will always use post-event buffer"}
+              </p>
+            </div>
+          </div>
+
+          <Button
+            onClick={async () => {
+              if (!lifecycle) return
+              try {
+                await updateLifecycle.mutateAsync(lifecycle)
+                toast.success("Channel lifecycle settings saved")
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : "Failed to save")
+              }
+            }}
+            disabled={updateLifecycle.isPending}
+          >
+            {updateLifecycle.isPending ? (
               <Loader2 className="h-4 w-4 mr-1 animate-spin" />
             ) : (
               <Save className="h-4 w-4 mr-1" />

@@ -144,6 +144,10 @@ def init_db(db_path: Path | str | None = None) -> None:
             # (SQLite CHECK constraints require table recreation to update)
             _migrate_settings_for_v65(conn)
 
+            # Pre-migration: add feed_team_id column before schema.sql runs
+            # (schema.sql unique index idx_mc_unique_event_v2 references this column)
+            _add_column_if_not_exists(conn, "managed_channels", "feed_team_id", "TEXT")
+
             # Apply schema (creates tables if missing, INSERT OR REPLACE updates seed data)
             conn.executescript(schema_sql)
             # Run remaining migrations for existing databases
