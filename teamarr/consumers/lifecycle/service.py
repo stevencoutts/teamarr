@@ -1225,7 +1225,7 @@ class ChannelLifecycleService:
         # Build extra variables for template resolution
         # Always include exception_keyword - resolves to "" if None (graceful disappear)
         extra_vars = {
-            "exception_keyword": exception_keyword.title() if exception_keyword else "",
+            "exception_keyword": exception_keyword if exception_keyword else "",
         }
 
         if not name_format:
@@ -1247,7 +1247,7 @@ class ChannelLifecycleService:
 
         # Auto-append keyword only if template didn't use {exception_keyword}
         if exception_keyword and not template_uses_keyword:
-            base_name = f"{base_name} ({exception_keyword.title()})"
+            base_name = f"{base_name} ({exception_keyword})"
 
         # Prepend "POSTPONED | " if event is postponed and setting is enabled
         if is_event_postponed(event):
@@ -1322,7 +1322,7 @@ class ChannelLifecycleService:
             # Unknown variables stay literal (e.g., {bad_var}) so user can identify issues
             if "{" in logo_url:
                 extra_vars = {
-                    "exception_keyword": exception_keyword.title() if exception_keyword else "",
+                    "exception_keyword": exception_keyword if exception_keyword else "",
                 }
                 return self._resolve_template(
                     logo_url, event, extra_vars, card_segment=segment

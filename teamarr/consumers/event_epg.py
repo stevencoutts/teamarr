@@ -407,7 +407,7 @@ class EventEPGGenerator:
 
             # Build context using home team perspective
             # Inject exception_keyword into extra_vars so it resolves in all template fields
-            keyword_value = exception_keyword.title() if exception_keyword else ""
+            keyword_value = exception_keyword if exception_keyword else ""
             context = self._context_builder.build_for_event(
                 event=event,
                 team_id=event.home_team.id,
