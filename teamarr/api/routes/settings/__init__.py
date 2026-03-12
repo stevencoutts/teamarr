@@ -16,6 +16,7 @@ from .channel_numbering import router as channel_numbering_router
 from .dispatcharr import router as dispatcharr_router
 from .display import router as display_router
 from .epg import router as epg_router
+from .feed_separation import router as feed_separation_router
 from .lifecycle import router as lifecycle_router
 from .models import (
     AllSettingsModel,
@@ -24,6 +25,7 @@ from .models import (
     DisplaySettingsModel,
     DurationSettingsModel,
     EPGSettingsModel,
+    FeedSeparationSettingsModel,
     LifecycleSettingsModel,
     ReconciliationSettingsModel,
     SchedulerSettingsModel,
@@ -48,6 +50,7 @@ router.include_router(team_filter_router)
 router.include_router(channel_numbering_router)
 router.include_router(stream_ordering_router)
 router.include_router(update_check_router)
+router.include_router(feed_separation_router)
 
 # =============================================================================
 # MAIN SETTINGS ENDPOINT
@@ -148,6 +151,13 @@ def get_settings():
             dev_branch=settings.update_check.dev_branch,
             auto_detect_branch=settings.update_check.auto_detect_branch,
         ),
+        feed_separation=FeedSeparationSettingsModel(
+            enabled=settings.feed_separation.enabled,
+            home_terms=settings.feed_separation.home_terms,
+            away_terms=settings.feed_separation.away_terms,
+            detect_team_names=settings.feed_separation.detect_team_names,
+            label_style=settings.feed_separation.label_style,
+        ),
         epg_generation_counter=settings.epg_generation_counter,
         schema_version=settings.schema_version,
         # UI timezone info (read-only)
@@ -172,4 +182,5 @@ __all__ = [
     "StreamOrderingSettingsModel",
     "TeamFilterSettingsModel",
     "UpdateCheckSettingsModel",
+    "FeedSeparationSettingsModel",
 ]

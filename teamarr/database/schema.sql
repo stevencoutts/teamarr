@@ -340,8 +340,17 @@ CREATE TABLE IF NOT EXISTS settings (
     global_consolidation_mode TEXT DEFAULT 'consolidate'
         CHECK(global_consolidation_mode IN ('consolidate', 'separate')),
 
+    -- Feed Separation (HOME/AWAY stream detection)
+    -- When enabled, detects feed indicators in stream names and creates separate channels per feed
+    feed_separation_enabled BOOLEAN DEFAULT 0,          -- Master toggle (off by default)
+    feed_home_terms JSON DEFAULT '["HOME"]',            -- Terms that indicate home feed
+    feed_away_terms JSON DEFAULT '["AWAY"]',            -- Terms that indicate away feed
+    feed_detect_team_names BOOLEAN DEFAULT 1,           -- Also detect team names as feed indicators
+    feed_label_style TEXT DEFAULT 'team_name'           -- How to label feeds in channel names
+        CHECK(feed_label_style IN ('team_name', 'short_name', 'home_away')),
+
     -- Schema Version
-    schema_version INTEGER DEFAULT 67
+    schema_version INTEGER DEFAULT 68
 );
 
 -- Insert default settings

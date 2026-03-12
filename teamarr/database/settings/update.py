@@ -649,6 +649,68 @@ def update_update_check_settings(
     return False
 
 
+def update_feed_separation_settings(
+    conn: Connection,
+    enabled: bool | None = None,
+    home_terms: list[str] | None = None,
+    away_terms: list[str] | None = None,
+    detect_team_names: bool | None = None,
+    label_style: str | None = None,
+) -> bool:
+    """Update feed separation settings.
+
+    Args:
+        conn: Database connection
+        enabled: Master toggle for feed separation
+        home_terms: Terms that indicate home feed (e.g., ["HOME"])
+        away_terms: Terms that indicate away feed (e.g., ["AWAY"])
+        detect_team_names: Also detect team names as feed indicators
+        label_style: How to label feeds ('team_name', 'short_name', 'home_away')
+
+    Returns:
+        True if updated
+    """
+    updates = []
+    values = []
+
+    if enabled is not None:
+        updates.append("feed_separation_enabled = ?")
+        values.append(int(enabled))
+    if home_terms is not None:
+        updates.append("feed_home_terms = ?")
+        values.append(json.dumps(home_terms))
+    if away_terms is not None:
+        updates.append("feed_away_terms = ?")
+        values.append(json.dumps(away_terms))
+    if detect_team_names is not None:
+        updates.append("feed_detect_team_names = ?")
+        values.append(int(detect_team_names))
+    if label_style is not None:
+        valid_styles = ("team_name", "short_name", "home_away")
+        if label_style not in valid_styles:
+            logger.warning(
+                "[FEED_SEP] Invalid label_style '%s', must be one of %s",
+                label_style,
+                valid_styles,
+            )
+            return False
+        updates.append("feed_label_style = ?")
+        values.append(label_style)
+
+    if not updates:
+        return False
+
+    query = f"UPDATE settings SET {', '.join(updates)} WHERE id = 1"
+    cursor = conn.execute(query, values)
+    if cursor.rowcount > 0:
+        logger.info(
+            "[UPDATED] Feed separation settings: %s",
+            [u.split(" = ")[0] for u in updates],
+        )
+        return True
+    return False
+
+
 def update_backup_settings(
     conn: Connection,
     enabled: bool | None = None,

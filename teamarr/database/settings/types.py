@@ -232,6 +232,22 @@ class ChannelNumberingSettings:
 
 
 @dataclass
+class FeedSeparationSettings:
+    """Feed separation settings for HOME/AWAY stream detection.
+
+    When enabled, detects feed indicators (HOME/AWAY tokens or team names)
+    in stream names and creates separate channels per feed, resolving
+    to actual team names.
+    """
+
+    enabled: bool = False  # Master toggle
+    home_terms: list[str] = field(default_factory=lambda: ["HOME"])
+    away_terms: list[str] = field(default_factory=lambda: ["AWAY"])
+    detect_team_names: bool = True  # Also match team names as feed indicators
+    label_style: str = "team_name"  # 'team_name', 'short_name', 'home_away'
+
+
+@dataclass
 class AllSettings:
     """Complete application settings."""
 
@@ -249,5 +265,6 @@ class AllSettings:
     stream_ordering: StreamOrderingSettings = field(default_factory=StreamOrderingSettings)
     update_check: UpdateCheckSettings = field(default_factory=UpdateCheckSettings)
     backup: BackupSettings = field(default_factory=BackupSettings)
+    feed_separation: FeedSeparationSettings = field(default_factory=FeedSeparationSettings)
     epg_generation_counter: int = 0
     schema_version: int = 52

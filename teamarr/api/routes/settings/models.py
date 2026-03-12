@@ -373,6 +373,31 @@ class UpdateInfoModel(BaseModel):
 
 
 # =============================================================================
+# FEED SEPARATION SETTINGS
+# =============================================================================
+
+
+class FeedSeparationSettingsModel(BaseModel):
+    """Feed separation settings for HOME/AWAY stream detection."""
+
+    enabled: bool = False  # Master toggle
+    home_terms: list[str] = ["HOME"]  # Terms that indicate home feed
+    away_terms: list[str] = ["AWAY"]  # Terms that indicate away feed
+    detect_team_names: bool = True  # Also detect team names as feed indicators
+    label_style: str = "team_name"  # 'team_name', 'short_name', 'home_away'
+
+
+class FeedSeparationSettingsUpdate(BaseModel):
+    """Update model for feed separation settings (all fields optional)."""
+
+    enabled: bool | None = None
+    home_terms: list[str] | None = None
+    away_terms: list[str] | None = None
+    detect_team_names: bool | None = None
+    label_style: str | None = None
+
+
+# =============================================================================
 # ALL SETTINGS
 # =============================================================================
 
@@ -391,6 +416,7 @@ class AllSettingsModel(BaseModel):
     channel_numbering: ChannelNumberingSettingsModel | None = None
     stream_ordering: StreamOrderingSettingsModel | None = None
     update_check: UpdateCheckSettingsModel | None = None
+    feed_separation: FeedSeparationSettingsModel | None = None
     epg_generation_counter: int = 0
     schema_version: int = 44
 

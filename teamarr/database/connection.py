@@ -1553,6 +1553,24 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 67 (remove Cricbuzz provider)")
         current_version = 67
 
+    # ==========================================================================
+    # v68: Feed Separation settings (HOME/AWAY stream detection)
+    # ==========================================================================
+    if current_version < 68:
+        new_cols = {
+            "feed_separation_enabled": "BOOLEAN DEFAULT 0",
+            "feed_home_terms": "JSON DEFAULT '[\"HOME\"]'",
+            "feed_away_terms": "JSON DEFAULT '[\"AWAY\"]'",
+            "feed_detect_team_names": "BOOLEAN DEFAULT 1",
+            "feed_label_style": "TEXT DEFAULT 'team_name'",
+        }
+        for col, defn in new_cols.items():
+            _add_column_if_not_exists(conn, "settings", col, defn)
+
+        conn.execute("UPDATE settings SET schema_version = 68 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 68 (feed separation settings)")
+        current_version = 68
+
 
 def _dedup_cross_group_channels(conn: sqlite3.Connection) -> None:
     """Merge duplicate channels that exist for the same event across groups.

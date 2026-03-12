@@ -15,6 +15,7 @@ from .types import (
     DisplaySettings,
     DurationSettings,
     EPGSettings,
+    FeedSeparationSettings,
     LifecycleSettings,
     ReconciliationSettings,
     SchedulerSettings,
@@ -189,6 +190,7 @@ def get_all_settings(conn: Connection) -> AllSettings:
         ),
         update_check=_build_update_check_settings(row),
         backup=_build_backup_settings(row),
+        feed_separation=_build_feed_separation_settings(row),
         epg_generation_counter=row["epg_generation_counter"] or 0,
         schema_version=row["schema_version"] or 2,
     )
@@ -580,6 +582,72 @@ def get_update_check_settings(conn: Connection) -> UpdateCheckSettings:
         return UpdateCheckSettings()
 
     return _build_update_check_settings(row)
+
+
+# Single source of truth for feed separation defaults
+_FEED_SEPARATION_DEFAULTS = FeedSeparationSettings()
+
+
+def _build_feed_separation_settings(row) -> FeedSeparationSettings:
+    """Build FeedSeparationSettings from DB row, using dataclass defaults for NULL values."""
+    d = _FEED_SEPARATION_DEFAULTS
+
+    # Parse JSON arrays for home/away terms
+    home_terms = d.home_terms
+    if "feed_home_terms" in row.keys() and row["feed_home_terms"]:
+        try:
+            parsed = json.loads(row["feed_home_terms"])
+            if isinstance(parsed, list):
+                home_terms = parsed
+        except json.JSONDecodeError:
+            pass
+
+    away_terms = d.away_terms
+    if "feed_away_terms" in row.keys() and row["feed_away_terms"]:
+        try:
+            parsed = json.loads(row["feed_away_terms"])
+            if isinstance(parsed, list):
+                away_terms = parsed
+        except json.JSONDecodeError:
+            pass
+
+    return FeedSeparationSettings(
+        enabled=bool(row["feed_separation_enabled"])
+        if "feed_separation_enabled" in row.keys()
+        and row["feed_separation_enabled"] is not None
+        else d.enabled,
+        home_terms=home_terms,
+        away_terms=away_terms,
+        detect_team_names=bool(row["feed_detect_team_names"])
+        if "feed_detect_team_names" in row.keys()
+        and row["feed_detect_team_names"] is not None
+        else d.detect_team_names,
+        label_style=row["feed_label_style"] or d.label_style
+        if "feed_label_style" in row.keys()
+        else d.label_style,
+    )
+
+
+def get_feed_separation_settings(conn: Connection) -> FeedSeparationSettings:
+    """Get feed separation settings.
+
+    Args:
+        conn: Database connection
+
+    Returns:
+        FeedSeparationSettings object with feed detection configuration
+    """
+    cursor = conn.execute(
+        """SELECT feed_separation_enabled, feed_home_terms, feed_away_terms,
+                  feed_detect_team_names, feed_label_style
+           FROM settings WHERE id = 1"""
+    )
+    row = cursor.fetchone()
+
+    if not row:
+        return FeedSeparationSettings()
+
+    return _build_feed_separation_settings(row)
 
 
 # Single source of truth for backup settings defaults
