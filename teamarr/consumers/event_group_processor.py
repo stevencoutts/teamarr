@@ -1497,7 +1497,7 @@ class EventGroupProcessor:
             entry["feed_team"] = feed_team
 
             if feed_team:
-                logger.debug(
+                logger.info(
                     "[FEED] Stream '%s' → feed_team=%s (hint=%s)",
                     entry["stream"]["name"][:50],
                     feed_team.name,
@@ -2000,6 +2000,7 @@ class EventGroupProcessor:
                         match_method=match_method,
                         confidence=confidence,
                         origin_match_method=origin_method,
+                        feed_hint=getattr(result, "feed_hint", None),
                     )
                 )
             elif result.matched and not result.included:
@@ -2038,6 +2039,7 @@ class EventGroupProcessor:
                         match_method=match_method,
                         confidence=confidence,
                         origin_match_method=origin_method,
+                        feed_hint=getattr(result, "feed_hint", None),
                     )
                 )
             elif result.is_exception:
